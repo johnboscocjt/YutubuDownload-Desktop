@@ -312,7 +312,7 @@ ytd --version
 
 <img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/0ffca626-e299-4e32-847d-320796986192" />
 
-### **SOLUTION : Update and upgrade your PC and your wifi package if broken, Use Mobile Data by hotspotting your pc from your phone, Keep trying, close and re-open terminal, Kill chrome sessions or even close browsers, Find Ethernet and use it for downloading**
+### **SOLUTION :Use YUTUBU-DOWNLOADER, then if it persists Update and upgrade your PC and your wifi package if broken, Use Mobile Data by hotspotting your pc from your phone, Keep trying, close and re-open terminal, Kill chrome sessions or even close browsers, Find Ethernet and use it for downloading**
 
 <br />
 
