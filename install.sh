@@ -98,23 +98,18 @@ else
     echo "   ✅ All system dependencies already installed"
 fi
 
-# STEP 2: yt-dlp
+# STEP 2: yt-dlp (always refresh — YouTube breaks stale builds often)
 echo ""
 echo "📦 STEP 2/5: Checking yt-dlp..."
-if command -v yt-dlp &> /dev/null && yt-dlp --version &> /dev/null; then
-    echo "   ✅ yt-dlp already installed ($(yt-dlp --version | head -1))"
+print_loading "   ⬇️  Installing/updating yt-dlp"
+if curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp; then
+    chmod a+rx /usr/local/bin/yt-dlp
+    echo "   ✅ yt-dlp ready at /usr/local/bin/yt-dlp ($(yt-dlp --version | head -1))"
 else
-    print_loading "   ⬇️  Installing yt-dlp"
-    curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp > /dev/null 2>&1
-    chmod a+rx /usr/local/bin/yt-dlp > /dev/null 2>&1
-    if command -v yt-dlp &> /dev/null; then
-        echo "   ✅ yt-dlp installed to /usr/local/bin/yt-dlp"
-    else
-        echo "   ❌ FAILED to install yt-dlp. Try manually:"
-        echo "      sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp"
-        echo "      sudo chmod a+rx /usr/local/bin/yt-dlp"
-        exit 1
-    fi
+    echo "   ❌ FAILED to install yt-dlp. Try manually:"
+    echo "      sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp"
+    echo "      sudo chmod a+rx /usr/local/bin/yt-dlp"
+    exit 1
 fi
 
 # STEP 3: Deno - SIMPLIFIED VERSION

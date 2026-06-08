@@ -136,6 +136,45 @@ ensure_cookie_store() {
     refresh_cookie_store "false"
 }
 
+# Keep yt-dlp current — YouTube breaks older builds frequently (audio/JS challenges).
+ensure_ytdlp_ready() {
+    local user_bin="${HOME}/.local/bin"
+    mkdir -p "$user_bin"
+
+    if [[ -x "$user_bin/yt-dlp" ]]; then
+        export PATH="$user_bin:$PATH"
+    fi
+
+    if ! command -v yt-dlp &> /dev/null; then
+        echo -e "${SKY_BLUE}⬇️  Installing yt-dlp to ${user_bin}...${RESET}"
+        if curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o "$user_bin/yt-dlp"; then
+            chmod +x "$user_bin/yt-dlp"
+            export PATH="$user_bin:$PATH"
+        else
+            return 1
+        fi
+    fi
+
+    if yt-dlp -U >/dev/null 2>&1; then
+        :
+    elif [[ -w "$user_bin" ]]; then
+        local age=999999
+        if [[ -f "$user_bin/yt-dlp" ]]; then
+            age=$(( $(date +%s) - $(stat -c %Y "$user_bin/yt-dlp" 2>/dev/null || echo 0) ))
+        fi
+        if [[ ! -x "$user_bin/yt-dlp" ]] || (( age > 86400 )); then
+            echo -e "${SKY_BLUE}🔄 Refreshing yt-dlp (no sudo needed)...${RESET}"
+            if curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o "$user_bin/yt-dlp.tmp"; then
+                chmod +x "$user_bin/yt-dlp.tmp"
+                mv -f "$user_bin/yt-dlp.tmp" "$user_bin/yt-dlp"
+                export PATH="$user_bin:$PATH"
+            fi
+        fi
+    fi
+
+    command -v yt-dlp &> /dev/null
+}
+
 # === HELPER FUNCTION FOR PADDED COLORED OUTPUT ===
 print_padded() {
     local label="$1"
@@ -168,6 +207,76 @@ print_error() {
         sleep 0.2
     done
     echo -e " ${RED}❌${RESET}"
+}
+
+exit_ytd_session() {
+    echo ""
+    echo -e "${SKY_BLUE}👋 Session ended. Run ${BRIGHT_CYAN}ytd${RESET} anytime. Goodbye!${RESET}"
+    exit 0
+}
+
+show_download_complete_box() {
+    echo ""
+    echo -e "${BRIGHT_GREEN}╔══════════════════════════════════════════════════════════════════════════════╗${RESET}"
+    echo -e "${BRIGHT_GREEN}║${RESET}                                                                              ${BRIGHT_GREEN}║${RESET}"
+    printf "${BRIGHT_GREEN}║${RESET} ${BRIGHT_GREEN}✅ DOWNLOAD COMPLETE${RESET} at %-52s ${BRIGHT_GREEN}║${RESET}\n" "$(date '+%I:%M:%S %p')"
+    echo -e "${BRIGHT_GREEN}║${RESET}                                                                              ${BRIGHT_GREEN}║${RESET}"
+    local folder_display
+    folder_display="$( [[ "${USE_FOLDER:-false}" == "true" ]] && echo "$FOLDER_NAME" || echo "Current directory" )"
+    printf "${BRIGHT_GREEN}║${RESET} ${CYAN}Files saved:${RESET} %-63s ${BRIGHT_GREEN}║${RESET}\n" "$folder_display"
+    local mode_display
+    mode_display="$( [[ "${IS_PLAYLIST:-false}" == "true" ]] && echo "FULL PLAYLIST" || echo "SINGLE VIDEO ONLY" )"
+    printf "${BRIGHT_GREEN}║${RESET} ${CYAN}• Mode:${RESET} %-68s ${BRIGHT_GREEN}║${RESET}\n" "$mode_display"
+    printf "${BRIGHT_GREEN}║${RESET} ${CYAN}• Audio:${RESET} ${BRIGHT_GREEN}GUARANTEED${RESET} (MP4 merge format)                                       ${BRIGHT_GREEN}║${RESET}"
+    printf "\n${BRIGHT_GREEN}║${RESET} ${CYAN}• Quality:${RESET} ${BRIGHT_GREEN}Standard resolutions (360p-4K) always available${RESET}                   ${BRIGHT_GREEN}║${RESET}"
+    printf "\n${BRIGHT_GREEN}║${RESET} ${CYAN}• Resume:${RESET} ${BRIGHT_GREEN}Smart (partial = resume, full = skip)${RESET}                              ${BRIGHT_GREEN}║${RESET}"
+    echo -e "\n${BRIGHT_GREEN}║${RESET}                                                                              ${BRIGHT_GREEN}║${RESET}"
+    echo -e "${BRIGHT_GREEN}║${RESET}    ${BRIGHT_CYAN}💡 TANZANIA TIPS:${RESET}                                                         ${BRIGHT_GREEN}║${RESET}"
+    printf "${BRIGHT_GREEN}║${RESET} ${CYAN}•${RESET} Single video? Script ${BRIGHT_GREEN}IGNORES ?list= params${RESET}                                 ${BRIGHT_GREEN}║${RESET}"
+    printf "\n${BRIGHT_GREEN}║${RESET} ${CYAN}•${RESET} Audio missing? ${BRIGHT_YELLOW}Re-download at 720p${RESET} (most reliable streams)                 ${BRIGHT_GREEN}║${RESET}"
+    printf "\n${BRIGHT_GREEN}║${RESET} ${CYAN}•${RESET} Bot errors? Script ${BRIGHT_GREEN}auto-refreshes cookies${RESET}                                  ${BRIGHT_GREEN}║${RESET}"
+    printf "\n${BRIGHT_GREEN}║${RESET} ${CYAN}•${RESET} Slow network? ${BRIGHT_YELLOW}720p works 95% of time on Vodacom/Airtel${RESET}                       ${BRIGHT_GREEN}║${RESET}"
+    printf "\n${BRIGHT_GREEN}║${RESET} ${CYAN}• Re-download?${RESET} ${BRIGHT_YELLOW}Just delete the file and run again!${RESET}                           ${BRIGHT_GREEN}║${RESET}"
+    echo -e "\n${BRIGHT_GREEN}║${RESET}                                                                              ${BRIGHT_GREEN}║${RESET}"
+    printf "${BRIGHT_GREEN}║${RESET} ${BRIGHT_MAGENTA}Enjoy your downloads! 🌍✨${RESET}                                                   ${BRIGHT_GREEN}║${RESET}"
+    printf "\n${BRIGHT_GREEN}║${RESET} ${CYAN}Made with ❤️  for Tanzania by Johnbosco (Dar es Salaam)${RESET}                       ${BRIGHT_GREEN}║${RESET}"
+    echo -e "\n${BRIGHT_GREEN}║${RESET}                                                                              ${BRIGHT_GREEN}║${RESET}"
+    echo -e "${BRIGHT_GREEN}╚══════════════════════════════════════════════════════════════════════════════╝${RESET}"
+    echo ""
+}
+
+show_ytd_signature() {
+    echo -e "\033[38;5;194m\"Out here doing some Alien things, Jesus is King...\" ~johnboscocjt (Isaiah 28:21)\033[0m"
+    echo -e "\033[38;5;82m"
+    cat << 'EOF'
+                                    ¸¸,..--------------------.....,¸
+                      ¸,..--··˜˜¨¨                                     ¨¨˜·.¸
+                 ¸.·˜                                                          ˜·¸
+             ¸.·˜                                                          ¸˜    ˜¸
+         ¸¸·''                                                           ¸ ·  ˜¸  ˜
+        ¸˜¨  ¸¸˜                                                    ¸.·˜¸ ·˜
+       ¸'     ˜·¸                                         ¸,..--·.¸
+
+      ¸'¸¸¸      ˜-.¸                                 ¸,..---···-¸˜¨¸
+    ·˜¸¸¸¸¸¸¯¯˜·.¸      .¸·˜                 ¸,-·˜;;;;;;;;;;;;¸'˜
+       ¸·˜ ;;;;;;,˜·¸   ˜¸      ˜.¸          ¸.˜;;;;;;;;;;;;;;;;¸'
+      ';;;;;;;;;;;;;;;;¸¸ '¸       ´      ¸·';;;;;;;;;;;;;;;;; ¸´
+      ';;;;;;;;;;;;;;;;;;'¸ ˜¸         /¸/;;;;;;;;;;;;;;;; ¸.·˜ ¸˜       ¸˜
+       ˜·.,¸¸¸.....----·¸/        ˜-¨˜˜˜˜˜˜˜˜¨¨¸¸,.·-'˜               ˜·¸·˜
+           ˜¯¸¸¸¸¸   ¸·˜   ¸·    ´  ¯¯¯¯¯                        ¸·'˜
+              ˜·¸   ·¨¸¸,,,.˜ .,¸                               ¸,.·˜¨
+                  ˜¨¸           ¯˜·¸              ¸.···˜˜·¸.·˜¨¸/
+                     ˜·¸¸¸,,,,¸¸¸¸   ˜¸         ¸·˜   ¸.·˜,˜ ¸·˜¨
+                        ¨¸¨˜˜˜'˜¨¨¯'   ˜¸       ˜¸,.·˜¸;     \¸
+                          ˜¸            ˜¸.   ¸·˜;;;˜         '¸
+                           ˜¸¸          ¸,.-·¨¸;;;              '¸
+                          ¸,·´¯¨˜˜˜¨¯¯;;;;;;;˜                 ˜.,¸¸¸
+  ;;;;;;;;;;;;;;;;;  ¸,.·˜;;;;;;;;;;;;;;;;;;;˜                          ˜·¸ ';;
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  ;;
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  ;;
+    ¨¨¨¨¨¨¨¨˜˜˜˜˜˜˜˜''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''˜˜˜˜˜˜˜˜˜˜˜¨
+EOF
+    echo -e "\033[0m"
 }
 
 # Function to extract YouTube video ID from URL
@@ -370,7 +479,7 @@ get_and_display_metadata() {
 
 # Version check
 if [[ "${1:-}" == "--version" ]] || [[ "${1:-}" == "-v" ]]; then
-    echo "ytd (YutubuDownload) v2.0.1 (2026-06-08) • Tanzania-Optimized • MULTI-INSTANCE + SHARED COOKIES"
+    echo "ytd (YutubuDownload) v2.0.2 (2026-06-08) • Tanzania-Optimized • MULTI-INSTANCE + SHARED COOKIES"
     exit 0
 fi
 
@@ -391,7 +500,7 @@ fi
 } >/dev/tty 2>/dev/null || { echo "ytd"; }
 
 # === CUSTOM HEADER ===
-echo -e "${BRIGHT_CYAN}ytd (YutubuDownload), v2.0.1${RESET}"
+echo -e "${BRIGHT_CYAN}ytd (YutubuDownload), v2.0.2${RESET}"
 
 # === SMART COOKIE REFRESH ===
 echo -e "${SKY_BLUE}🔄 Preparing shared cookies (multi-instance safe)...${RESET}"
@@ -461,13 +570,14 @@ echo ""
 ensure_cookie_store
 echo ""
 
-# Dependency checks
-if ! command -v yt-dlp &> /dev/null; then
+# Dependency checks — auto-refresh yt-dlp before validating
+if ! ensure_ytdlp_ready; then
     print_error "❌ ERROR: yt-dlp not found!"
     echo "   Install with installer:"
     echo -e "   ${CYAN}sudo bash -c '\$(curl -sL https://raw.githubusercontent.com/johnboscocjt/Youtube-Downloader-For-UbuntuTerminal/main/install.sh)'${RESET}"
     exit 1
 fi
+echo -e "${LIME}✅ yt-dlp $(yt-dlp --version 2>/dev/null | head -1)${RESET}"
 
 if ! command -v ffmpeg &> /dev/null; then
     print_error "⚠️  WARNING: ffmpeg missing → Videos will have NO AUDIO!"
@@ -500,6 +610,37 @@ if [[ "$CONCURRENT_FRAGMENTS" -gt 1 ]]; then
     CONCURRENT_FRAGMENT_FLAG=(--concurrent-fragments "$CONCURRENT_FRAGMENTS")
 fi
 
+# === SESSION MODE ===
+echo -e "${BRIGHT_MAGENTA}══════════════════════════════════════════════════════════════════════${RESET}"
+echo -e "${BRIGHT_CYAN}🔄 SESSION MODE${RESET}"
+echo -e "${BRIGHT_MAGENTA}══════════════════════════════════════════════════════════════════════${RESET}"
+echo -e "${CYAN}How do you want to use ytd?${RESET}"
+echo -e "  ${BRIGHT_BLUE}1${RESET} = One download then exit"
+echo -e "  ${BRIGHT_BLUE}2${RESET} = Keep downloading (paste new URLs until you're done)"
+echo -n -e "${BRIGHT_CYAN}Enter choice (1/2) [default=1]: ${RESET}"
+read -r SESSION_MODE_CHOICE || SESSION_MODE_CHOICE="1"
+SESSION_MODE_CHOICE="${SESSION_MODE_CHOICE:-1}"
+SESSION_MODE_CHOICE=$(echo "$SESSION_MODE_CHOICE" | xargs)
+SESSION_LOOP="false"
+[[ "$SESSION_MODE_CHOICE" == "2" ]] && SESSION_LOOP="true"
+if [[ "$SESSION_LOOP" == "true" ]]; then
+    echo -e "${SKY_BLUE}ℹ️  Loop mode: stay in ytd until you type ${BRIGHT_CYAN}q${RESET} at the URL prompt${RESET}"
+else
+    echo -e "${SKY_BLUE}ℹ️  Single mode: one download then exit${RESET}"
+fi
+echo ""
+
+DOWNLOAD_ROUND=0
+while true; do
+    DOWNLOAD_ROUND=$((DOWNLOAD_ROUND + 1))
+    SESSION_LOG_FILE="$SESSION_ROOT/download-${DOWNLOAD_ROUND}.log"
+    : > "$SESSION_LOG_FILE" 2>/dev/null || true
+
+    if [[ "$DOWNLOAD_ROUND" -gt 1 ]]; then
+        echo -e "${GRAY}──────────────────────────────────────────────────────────────────────${RESET}"
+        echo ""
+    fi
+
 # === USER INPUTS ===
 
 # URL
@@ -507,10 +648,22 @@ echo -e "${BRIGHT_MAGENTA}══════════════════
 echo -e "${BRIGHT_CYAN}📥 URL INPUT${RESET}"
 echo -e "${BRIGHT_MAGENTA}══════════════════════════════════════════════════════════════════════${RESET}"
 echo -e "${CYAN}Enter YouTube URL (video or playlist):${RESET}"
+echo -e "  ${BRIGHT_CYAN}q${RESET} = Quit session (run ${BRIGHT_CYAN}ytd${RESET} again anytime)"
 echo -n -e "${BRIGHT_CYAN}> ${RESET}"
-read -r URL || { echo ""; exit 1; }
+read -r URL || { echo ""; exit_ytd_session; }
 URL=$(echo "$URL" | xargs)
-[[ -z "$URL" ]] && { print_error "❌ No URL provided. Exiting."; exit 1; }
+if [[ "$URL" == "q" || "$URL" == "Q" ]]; then
+    exit_ytd_session
+fi
+if [[ -z "$URL" ]]; then
+    print_error "❌ No URL provided."
+    if [[ "$SESSION_LOOP" == "true" ]]; then
+        echo -e "${CYAN}Paste a URL or type ${BRIGHT_CYAN}q${RESET} to quit.${RESET}"
+        echo ""
+        continue
+    fi
+    exit 1
+fi
 echo ""
 
 # Download type
@@ -573,7 +726,8 @@ if [[ "$FORMAT_CHOICE" == "2" ]]; then
         *) AUDIO_QUAL="0" ;;
     esac
     MP3_FLAGS="$MP3_FLAGS --audio-quality $AUDIO_QUAL"
-    FORMAT="bestaudio"
+    # bestaudio/best: fall back to combined stream when audio-only formats are blocked
+    FORMAT="bestaudio/best"
 fi
 echo ""
 
@@ -725,6 +879,11 @@ CONFIRM=$(echo "$CONFIRM" | tr '[:upper:]' '[:lower:]')
 
 if [[ "$CONFIRM" != "y" ]]; then
     echo -e "${BRIGHT_YELLOW}Download cancelled by user.${RESET}"
+    if [[ "$SESSION_LOOP" == "true" ]]; then
+        echo -e "${CYAN}Paste another URL, or ${BRIGHT_CYAN}q${RESET} to quit.${RESET}"
+        echo ""
+        continue
+    fi
     exit 0
 fi
 
@@ -778,6 +937,11 @@ mark_network_stable() {
     fi
 }
 
+MERGE_OUTPUT_FLAG=(--merge-output-format mp4)
+if [[ "$IS_MP3" == "true" ]]; then
+    MERGE_OUTPUT_FLAG=()
+fi
+
 # Run yt-dlp with network timeout options
 {
 yt-dlp \
@@ -791,7 +955,7 @@ yt-dlp \
     --ignore-errors \
     --continue \
     --no-overwrites \
-    --merge-output-format mp4 \
+    "${MERGE_OUTPUT_FLAG[@]}" \
     "${CONCURRENT_FRAGMENT_FLAG[@]}" \
     --newline \
     --no-warnings \
@@ -1029,67 +1193,29 @@ if [[ "$DOWNLOAD_SUCCESS" == false ]]; then
     echo -e "${CYAN}   🔧 TECHNICAL FIX:${RESET}"
     echo -e "     • Check your internet connection"
     echo -e "     • Refresh shared cookies: delete ~/.config/YutubuDownload/cookies.txt and rerun"
-    echo -e "     • Update yt-dlp: sudo yt-dlp -U"
+    echo -e "     • Update yt-dlp: ${CYAN}yt-dlp -U${RESET} or rerun installer (auto-updates ~/.local/bin/yt-dlp)"
+    echo -e "     • MP3 failed? Script now falls back to combined stream — retry after yt-dlp refresh"
     echo -e "     • Use mobile hotspot if WiFi is unstable"
+    if [[ "$SESSION_LOOP" == "true" ]]; then
+        echo ""
+        echo -e "${CYAN}Paste another URL to try again, or ${BRIGHT_CYAN}q${RESET} to quit.${RESET}"
+        echo ""
+        continue
+    fi
     exit 1
 fi
 
-# === COMPLETION BOX ===
-echo ""
-echo -e "${BRIGHT_GREEN}╔══════════════════════════════════════════════════════════════════════════════╗${RESET}"
-echo -e "${BRIGHT_GREEN}║${RESET}                                                                              ${BRIGHT_GREEN}║${RESET}"
-printf "${BRIGHT_GREEN}║${RESET} ${BRIGHT_GREEN}✅ DOWNLOAD COMPLETE${RESET} at %-52s ${BRIGHT_GREEN}║${RESET}\n" "$(date '+%I:%M:%S %p')"
-echo -e "${BRIGHT_GREEN}║${RESET}                                                                              ${BRIGHT_GREEN}║${RESET}"
-FOLDER_DISPLAY="$( [[ "$USE_FOLDER" == "true" ]] && echo "$FOLDER_NAME" || echo "Current directory" )"
-printf "${BRIGHT_GREEN}║${RESET} ${CYAN}Files saved:${RESET} %-63s ${BRIGHT_GREEN}║${RESET}\n" "$FOLDER_DISPLAY"
-MODE_DISPLAY="$( [[ "$IS_PLAYLIST" == "true" ]] && echo "FULL PLAYLIST" || echo "SINGLE VIDEO ONLY" )"
-printf "${BRIGHT_GREEN}║${RESET} ${CYAN}• Mode:${RESET} %-68s ${BRIGHT_GREEN}║${RESET}\n" "$MODE_DISPLAY"
-printf "${BRIGHT_GREEN}║${RESET} ${CYAN}• Audio:${RESET} ${BRIGHT_GREEN}GUARANTEED${RESET} (MP4 merge format)                                       ${BRIGHT_GREEN}║${RESET}"
-printf "\n${BRIGHT_GREEN}║${RESET} ${CYAN}• Quality:${RESET} ${BRIGHT_GREEN}Standard resolutions (360p-4K) always available${RESET}                   ${BRIGHT_GREEN}║${RESET}"
-printf "\n${BRIGHT_GREEN}║${RESET} ${CYAN}• Resume:${RESET} ${BRIGHT_GREEN}Smart (partial = resume, full = skip)${RESET}                              ${BRIGHT_GREEN}║${RESET}"
-echo -e "\n${BRIGHT_GREEN}║${RESET}                                                                              ${BRIGHT_GREEN}║${RESET}"
-echo -e "${BRIGHT_GREEN}║${RESET}    ${BRIGHT_CYAN}💡 TANZANIA TIPS:${RESET}                                                         ${BRIGHT_GREEN}║${RESET}"
-printf "${BRIGHT_GREEN}║${RESET} ${CYAN}•${RESET} Single video? Script ${BRIGHT_GREEN}IGNORES ?list= params${RESET}                                 ${BRIGHT_GREEN}║${RESET}"
-printf "\n${BRIGHT_GREEN}║${RESET} ${CYAN}•${RESET} Audio missing? ${BRIGHT_YELLOW}Re-download at 720p${RESET} (most reliable streams)                 ${BRIGHT_GREEN}║${RESET}"
-printf "\n${BRIGHT_GREEN}║${RESET} ${CYAN}•${RESET} Bot errors? Script ${BRIGHT_GREEN}auto-refreshes cookies${RESET}                                  ${BRIGHT_GREEN}║${RESET}"
-printf "\n${BRIGHT_GREEN}║${RESET} ${CYAN}•${RESET} Slow network? ${BRIGHT_YELLOW}720p works 95% of time on Vodacom/Airtel${RESET}                       ${BRIGHT_GREEN}║${RESET}"
-printf "\n${BRIGHT_GREEN}║${RESET} ${CYAN}• Re-download?${RESET} ${BRIGHT_YELLOW}Just delete the file and run again!${RESET}                           ${BRIGHT_GREEN}║${RESET}"
-echo -e "\n${BRIGHT_GREEN}║${RESET}                                                                              ${BRIGHT_GREEN}║${RESET}"
-printf "${BRIGHT_GREEN}║${RESET} ${BRIGHT_MAGENTA}Enjoy your downloads! 🌍✨${RESET}                                                   ${BRIGHT_GREEN}║${RESET}"
-printf "\n${BRIGHT_GREEN}║${RESET} ${CYAN}Made with ❤️  for Tanzania by Johnbosco (Dar es Salaam)${RESET}                       ${BRIGHT_GREEN}║${RESET}"
-echo -e "\n${BRIGHT_GREEN}║${RESET}                                                                              ${BRIGHT_GREEN}║${RESET}"
-echo -e "${BRIGHT_GREEN}╚══════════════════════════════════════════════════════════════════════════════╝${RESET}"
-echo ""
+if [[ "$SESSION_LOOP" == "true" ]]; then
+    FOLDER_DISPLAY="$( [[ "$USE_FOLDER" == "true" ]] && echo "$FOLDER_NAME" || echo "$(pwd)" )"
+    echo ""
+    echo -e "${BRIGHT_GREEN}✅ Saved to:${RESET} ${BRIGHT_YELLOW}${FOLDER_DISPLAY}${RESET}"
+    echo -e "${CYAN}Paste another URL, or ${BRIGHT_CYAN}q${RESET} to quit.${RESET}"
+    echo ""
+    continue
+fi
 
-# === SIGNATURE ===
-echo -e "\033[38;5;194m\"Out here doing some Alien things, Jesus is King...\" ~johnboscocjt (Isaiah 28:21)\033[0m"
-echo -e "\033[38;5;82m"
-cat << 'EOF'
-                                    ¸¸,..--------------------.....,¸
-                      ¸,..--··˜˜¨¨                                     ¨¨˜·.¸
-                 ¸.·˜                                                          ˜·¸
-             ¸.·˜                                                          ¸˜    ˜¸
-         ¸¸·''                                                           ¸ ·  ˜¸  ˜
-        ¸˜¨  ¸¸˜                                                    ¸.·˜¸ ·˜
-       ¸'     ˜·¸                                         ¸,..--·.¸
+show_download_complete_box
+show_ytd_signature
+exit 0
 
-      ¸'¸¸¸      ˜-.¸                                 ¸,..---···-¸˜¨¸
-    ·˜¸¸¸¸¸¸¯¯˜·.¸      .¸·˜                 ¸,-·˜;;;;;;;;;;;;¸'˜
-       ¸·˜ ;;;;;;,˜·¸   ˜¸      ˜.¸          ¸.˜;;;;;;;;;;;;;;;;¸'
-      ';;;;;;;;;;;;;;;;¸¸ '¸       ´      ¸·';;;;;;;;;;;;;;;;; ¸´
-      ';;;;;;;;;;;;;;;;;;'¸ ˜¸         /¸/;;;;;;;;;;;;;;;; ¸.·˜ ¸˜       ¸˜
-       ˜·.,¸¸¸.....----·¸/        ˜-¨˜˜˜˜˜˜˜˜¨¨¸¸,.·-'˜               ˜·¸·˜
-           ˜¯¸¸¸¸¸   ¸·˜   ¸·    ´  ¯¯¯¯¯                        ¸·'˜
-              ˜·¸   ·¨¸¸,,,.˜ .,¸                               ¸,.·˜¨
-                  ˜¨¸           ¯˜·¸              ¸.···˜˜·¸.·˜¨¸/
-                     ˜·¸¸¸,,,,¸¸¸¸   ˜¸         ¸·˜   ¸.·˜,˜ ¸·˜¨
-                        ¨¸¨˜˜˜'˜¨¨¯'   ˜¸       ˜¸,.·˜¸;     \¸
-                          ˜¸            ˜¸.   ¸·˜;;;˜         '¸
-                           ˜¸¸          ¸,.-·¨¸;;;              '¸
-                          ¸,·´¯¨˜˜˜¨¯¯;;;;;;;˜                 ˜.,¸¸¸
-  ;;;;;;;;;;;;;;;;;  ¸,.·˜;;;;;;;;;;;;;;;;;;;˜                          ˜·¸ ';;
-  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  ;;
-  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  ;;
-    ¨¨¨¨¨¨¨¨˜˜˜˜˜˜˜˜''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''˜˜˜˜˜˜˜˜˜˜˜¨
-EOF
-echo -e "\033[0m"
+done
