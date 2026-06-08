@@ -431,8 +431,8 @@ print_error() {
 extract_video_id() {
     local url="$1"
     local video_id=""
-    if [[ "$url" =~ (?:v=|youtu\.be/)([^&?/]{11}) ]]; then
-        video_id="${BASH_REMATCH[1]}"
+    if [[ "$url" =~ (v=|youtu\.be/)([^&?/]{11}) ]]; then
+        video_id="${BASH_REMATCH[2]}"
     elif [[ "$url" =~ youtube\.com/embed/([^/?&]{11}) ]]; then
         video_id="${BASH_REMATCH[1]}"
     elif [[ "$url" =~ youtube\.com/watch\?.*v=([^&]{11}) ]]; then

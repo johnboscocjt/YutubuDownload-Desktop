@@ -16,12 +16,12 @@
    ░░░░░      ░░░░░░░░    ░░░░░    ░░░░░░░░ ░░░░░░░░    ░░░░░░░░ ░░░░░░░░░░    ░░░░░░     ░░░░ ░░░░    ░░░░ ░░░░░ ░░░░░  ░░░░░░   ░░░░░░░░  ░░░░░░░░ 
 ```
 
-**Author:** Johnbosco | **Last Updated:** April 20, 2026  
-**Version:** v2.0.0 — *Multi-Instance Shared-Cookie Edition*  
+**Author:** Johnbosco | **Last Updated:** June 08, 2026  
+**Version:** v2.0.1 — *Multi-Instance Shared-Cookie Edition*  
 🌍 *Tested across Dar es Salaam, Mwanza, Arusha & Zanzibar networks*  
 
 [![GitHub Repo](https://img.shields.io/badge/GitHub-Repository-181717?logo=github)](https://github.com/johnboscocjt/Youtube-Downloader-For-UbuntuTerminal)  
-[![Version](https://img.shields.io/badge/Version-2.0.0-brightgreen)](https://github.com/johnboscocjt/Youtube-Downloader-For-UbuntuTerminal/releases/tag/v2.0.0)
+[![Version](https://img.shields.io/badge/Version-2.0.1-brightgreen)](https://github.com/johnboscocjt/Youtube-Downloader-For-UbuntuTerminal/releases/tag/v2.0.1)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 </div>
@@ -275,7 +275,7 @@ sudo ln -sf /usr/local/bin/YutubuDownload /usr/local/bin/ytd
 
 # Check version
 ytd --version
-# Should show: ytd (YutubuDownload) v2.0.0 (2026-04-20) • Tanzania-Optimized • MULTI-INSTANCE + SHARED COOKIES
+# Should show: ytd (YutubuDownload) v2.0.1 (2026-06-08) • Tanzania-Optimized • MULTI-INSTANCE + SHARED COOKIES
 ```
 
 ---
@@ -341,6 +341,11 @@ ytd --version
 ---
 
 ## 📋 Changelog
+
+### v2.0.1 (2026-06-08)
+- **Fixed**: Bash-compatible video ID regex (no more `invalid regular expression` error)
+- **Improved**: Safe reinstall support in `install.sh` (local repo or GitHub)
+- **Added**: Troubleshooting guide entries for regex and reinstall fixes
 
 ### v2.0.0 (2026-04-20)
 - **Added**: Multi-instance safe architecture for parallel terminal usage

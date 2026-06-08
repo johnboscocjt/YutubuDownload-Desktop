@@ -1,5 +1,69 @@
 # 🛠️ Troubleshooting Guide
 
+## 🔁 Reinstall or Update (Fix Most Issues)
+
+Re-running the installer is **safe** — it updates `ytd`, refreshes dependencies, and does not remove your downloads or settings.
+
+**From the internet (recommended):**
+
+```bash
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/johnboscocjt/Youtube-Downloader-For-UbuntuTerminal/main/install.sh)"
+```
+
+**From a cloned copy of this repository:**
+
+```bash
+cd /path/to/Youtube-Downloader-For-UbuntuTerminal
+sudo bash install.sh
+```
+
+When you run `install.sh` from the repo folder, it installs the local `YutubuDownload` script directly (useful before changes are published to GitHub).
+
+After reinstalling, run `ytd` **without** `sudo`.
+
+---
+
+## ❌ Error: `invalid regular expression` / Could Not Extract Video ID
+
+### Symptoms
+
+When running `ytd`, you see:
+
+```
+/usr/local/bin/ytd: line 177: [[: invalid regular expression `(?:v=|youtu\.be/)([^&?/]{11})': Invalid preceding regular expression
+⚠️  Could not extract video ID
+Using direct URL for download...
+```
+
+### Cause
+
+An older `ytd` build used a Perl-style regex (`(?:...)`) that Bash does not support. Video ID detection fails and metadata may be incomplete.
+
+### ✅ Fix
+
+Reinstall to get the fixed script:
+
+```bash
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/johnboscocjt/Youtube-Downloader-For-UbuntuTerminal/main/install.sh)"
+```
+
+Or, if you have this repo cloned locally:
+
+```bash
+cd /path/to/Youtube-Downloader-For-UbuntuTerminal
+sudo bash install.sh
+```
+
+Verify:
+
+```bash
+ytd --version
+```
+
+Then run `ytd` again and paste a full YouTube URL (for example `https://www.youtube.com/watch?v=...`), not a comment or instruction line from the README.
+
+---
+
 ## ❌ Error: `browser-cookie3` Not Found
 
 ### Symptoms

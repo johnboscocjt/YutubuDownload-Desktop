@@ -34,8 +34,16 @@ cat << 'EOF'
                                                                                                                                        
 EOF
 echo "        Y U T U B U D O W N L O A D   I N S T A L L E R                  "
-echo "            Tanzania-Optimized • v2.0.0 • Apr 20, 2026                   "
+echo "            Tanzania-Optimized • v2.0.1 • Jun 08, 2026                   "
 echo ""
+
+INSTALLER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOCAL_SCRIPT="$INSTALLER_DIR/YutubuDownload"
+
+if command -v ytd &>/dev/null || [[ -f /usr/local/bin/YutubuDownload ]]; then
+    echo "ℹ️  Existing installation detected — safe to reinstall (updates ytd and repairs dependencies)."
+    echo ""
+fi
 
 # Helper function to check if package is installed
 is_installed() {
@@ -213,8 +221,13 @@ fi
 # STEP 5: YutubuDownload script
 echo ""
 echo "📦 STEP 5/5: Installing YutubuDownload script..."
-print_loading "   ⬇️  Fetching latest script"
-curl -sL https://raw.githubusercontent.com/johnboscocjt/Youtube-Downloader-For-UbuntuTerminal/main/YutubuDownload -o /usr/local/bin/YutubuDownload > /dev/null 2>&1
+if [[ -f "$LOCAL_SCRIPT" ]]; then
+    echo "   📂 Using local script from repository (reinstall/update)"
+    cp "$LOCAL_SCRIPT" /usr/local/bin/YutubuDownload
+else
+    print_loading "   ⬇️  Fetching latest script from GitHub"
+    curl -sL https://raw.githubusercontent.com/johnboscocjt/Youtube-Downloader-For-UbuntuTerminal/main/YutubuDownload -o /usr/local/bin/YutubuDownload > /dev/null 2>&1
+fi
 chmod +x /usr/local/bin/YutubuDownload > /dev/null 2>&1
 ln -sf /usr/local/bin/YutubuDownload /usr/local/bin/ytd > /dev/null 2>&1
 
@@ -242,6 +255,8 @@ echo "║ 2. Open terminal and run:                                             
 echo "║    ytd                                                                        ║"
 echo "║ 3. Paste YouTube URL when prompted                                           ║"
 echo "║                                                                              ║"
+echo "║   🔁 To update or repair later, run the installer again (safe to repeat).    ║"
+echo "║                                                                              ║"
 echo "║   💡 Tanzania Tip: Run during off-peak hours (after 10 PM EAT)               ║"
 echo "║    for best success on unstable networks                                     ║"
 echo "║                                                                              ║"
@@ -250,11 +265,11 @@ echo "║                                                                       
 echo "╚══════════════════════════════════════════════════════════════════════════════╝"
 echo ""
 
-echo "YUTUBUDOWNLOAD v2.0.0 • TANZANIA'S TERMINAL POWER  "
+echo "YUTUBUDOWNLOAD v2.0.1 • TANZANIA'S TERMINAL POWER  "
 echo "Fast • Reliable • Bot-Bypass • Designed for TZ Networks"
 echo ""
 
-echo "Version: YutubuDownload v2.0.0 (2026-04-20)"
+echo "Version: YutubuDownload v2.0.1 (2026-06-08)"
 echo "Repository: https://github.com/johnboscocjt/Youtube-Downloader-For-UbuntuTerminal"
 echo ""
 

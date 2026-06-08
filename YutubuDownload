@@ -2,7 +2,7 @@
 # YutubuDownload - Tanzania-Optimized YouTube Downloader for Ubuntu Terminal
 # Author: Johnbosco | Updated: April 20, 2026
 # GitHub: https://github.com/johnboscocjt/Youtube-Downloader-For-UbuntuTerminal
-# Version: 2.0.0 — Multi-Instance Shared-Cookie Architecture
+# Version: 2.0.1 — Multi-Instance Shared-Cookie Architecture
 
 set -euo pipefail
 
@@ -174,8 +174,8 @@ print_error() {
 extract_video_id() {
     local url="$1"
     local video_id=""
-    if [[ "$url" =~ (?:v=|youtu\.be/)([^&?/]{11}) ]]; then
-        video_id="${BASH_REMATCH[1]}"
+    if [[ "$url" =~ (v=|youtu\.be/)([^&?/]{11}) ]]; then
+        video_id="${BASH_REMATCH[2]}"
     elif [[ "$url" =~ youtube\.com/embed/([^/?&]{11}) ]]; then
         video_id="${BASH_REMATCH[1]}"
     elif [[ "$url" =~ youtube\.com/watch\?.*v=([^&]{11}) ]]; then
@@ -355,6 +355,11 @@ get_and_display_metadata() {
             fi
         else
             echo -e "${ORANGE}⚠️  Could not extract video ID${RESET}"
+            if [[ "$url" =~ youtube\.com|youtu\.be ]]; then
+                echo -e "${YELLOW}   Your ytd install may be outdated. Reinstall to fix:${RESET}"
+                echo -e "   ${CYAN}sudo bash -c '\$(curl -sL https://raw.githubusercontent.com/johnboscocjt/Youtube-Downloader-For-UbuntuTerminal/main/install.sh)'${RESET}"
+                echo -e "   ${CYAN}See TROUBLESHOOTING.md in the repo for details.${RESET}"
+            fi
             echo -e "${YELLOW}Using direct URL for download...${RESET}"
         fi
     fi
@@ -365,7 +370,7 @@ get_and_display_metadata() {
 
 # Version check
 if [[ "${1:-}" == "--version" ]] || [[ "${1:-}" == "-v" ]]; then
-    echo "ytd (YutubuDownload) v2.0.0 (2026-04-20) • Tanzania-Optimized • MULTI-INSTANCE + SHARED COOKIES"
+    echo "ytd (YutubuDownload) v2.0.1 (2026-06-08) • Tanzania-Optimized • MULTI-INSTANCE + SHARED COOKIES"
     exit 0
 fi
 
@@ -386,7 +391,7 @@ fi
 } >/dev/tty 2>/dev/null || { echo "ytd"; }
 
 # === CUSTOM HEADER ===
-echo -e "${BRIGHT_CYAN}ytd (YutubuDownload), v2.0.0${RESET}"
+echo -e "${BRIGHT_CYAN}ytd (YutubuDownload), v2.0.1${RESET}"
 
 # === SMART COOKIE REFRESH ===
 echo -e "${SKY_BLUE}🔄 Preparing shared cookies (multi-instance safe)...${RESET}"
