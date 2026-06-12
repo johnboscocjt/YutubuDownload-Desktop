@@ -314,6 +314,91 @@ render_output_root() {
     fi
 }
 
+STANDARD_HEIGHTS=(2160 1440 1080 720 480 360)
+
+ytdlp_quality_probe() {
+    local output=""
+
+    output=$(timeout 15 yt-dlp --cookies "$COOKIE_FILE" --no-playlist \
+        --no-warnings --quiet \
+        --socket-timeout 10 \
+        --retries 2 \
+        "$@" \
+        "$URL" 2>/dev/null || true)
+    if [[ -z "$output" ]]; then
+        output=$(timeout 15 yt-dlp --no-playlist \
+            --no-warnings --quiet \
+            --socket-timeout 10 \
+            --retries 2 \
+            "$@" \
+            "$URL" 2>/dev/null || true)
+    fi
+    printf '%s' "$output"
+}
+
+fetch_available_video_heights() {
+    local heights=""
+
+    heights=$(ytdlp_quality_probe -f "bv*" --print "%(height)s" | grep -E '^[0-9]+$' | sort -nur | uniq)
+    if [[ -z "$heights" ]]; then
+        heights=$(ytdlp_quality_probe -f "b" --print "%(height)s" | grep -E '^[0-9]+$' | sort -nur | uniq)
+    fi
+
+    echo "$heights"
+}
+
+probe_resolved_height() {
+    local format_str="$1"
+    ytdlp_quality_probe -f "$format_str" --simulate --print "%(height)s" \
+        | grep -E '^[0-9]+$' | head -1
+}
+
+build_video_format() {
+    local target="$1"
+    printf 'bestvideo[height=%s][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height=%s]+bestaudio/best[height=%s][ext=mp4]/best[height=%s]/bestvideo[height<=%s][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=%s]+bestaudio/best[height<=%s]/best' \
+        "$target" "$target" "$target" "$target" "$target" "$target" "$target"
+}
+
+resolve_video_quality() {
+    local requested="$1"
+    local listed_heights="$2"
+    local exact_fmt="bestvideo[height=${requested}]+bestaudio/best[height=${requested}]/best"
+    local resolved=""
+
+    resolved=$(probe_resolved_height "$exact_fmt")
+    if [[ -n "$resolved" ]]; then
+        echo "$resolved"
+        return 0
+    fi
+
+    local h
+    for h in "${STANDARD_HEIGHTS[@]}"; do
+        if [[ "$h" -lt "$requested" ]]; then
+            exact_fmt="bestvideo[height=${h}]+bestaudio/best[height=${h}]/best"
+            resolved=$(probe_resolved_height "$exact_fmt")
+            if [[ -n "$resolved" ]]; then
+                echo "$resolved"
+                return 0
+            fi
+        fi
+    done
+
+    if [[ -n "$listed_heights" ]]; then
+        for h in $listed_heights; do
+            if [[ "$h" -le "$requested" ]]; then
+                exact_fmt="bestvideo[height=${h}]+bestaudio/best[height=${h}]/best"
+                resolved=$(probe_resolved_height "$exact_fmt")
+                if [[ -n "$resolved" ]]; then
+                    echo "$resolved"
+                    return 0
+                fi
+            fi
+        done
+    fi
+
+    probe_resolved_height "bestvideo[height<=${requested}]+bestaudio/best[height<=${requested}]/best"
+}
+
 # Function to display a single progress bar - line-based and readable in logs
 show_progress_bar() {
     local percent="$1"
@@ -737,66 +822,52 @@ if [[ "$IS_MP3" == "false" ]]; then
     echo -e "${BRIGHT_CYAN}🎬 QUALITY SELECTION${RESET}"
     echo -e "${BRIGHT_MAGENTA}══════════════════════════════════════════════════════════════════════${RESET}"
     echo -e "${SKY_BLUE}🔍 Fetching available qualities...${RESET}"
-    
-    # Use shorter timeout for quality detection
-    ACTUAL_HEIGHTS=$(timeout 8 yt-dlp --cookies "$COOKIE_FILE" --no-playlist \
-        --print "%(height)s" \
-        --no-warnings \
-        --quiet \
-        --socket-timeout 5 \
-        --retries 1 \
-        "$URL" 2>/dev/null | \
-        grep -E '^[0-9]+$' | sort -nur | uniq | head -n 10 || echo "")
-    
-    STANDARD_HEIGHTS=(2160 1440 1080 720 480 360)
+
+    ACTUAL_HEIGHTS=$(fetch_available_video_heights || true)
     DISPLAY_HEIGHTS=""
-    
+
     if [[ -n "$ACTUAL_HEIGHTS" ]]; then
         for h in $ACTUAL_HEIGHTS; do
             [[ " ${STANDARD_HEIGHTS[*]} " =~ " $h " ]] && DISPLAY_HEIGHTS="$DISPLAY_HEIGHTS $h"
         done
-        
+
         for std in "${STANDARD_HEIGHTS[@]}"; do
             [[ ! " $DISPLAY_HEIGHTS " =~ " $std " ]] && DISPLAY_HEIGHTS="$DISPLAY_HEIGHTS $std"
         done
     else
         DISPLAY_HEIGHTS="${STANDARD_HEIGHTS[*]}"
-        echo -e "${YELLOW}⚠️  Could not fetch qualities. Using default options.${RESET}"
+        echo -e "${YELLOW}⚠️  Could not list qualities from the URL. Standard options shown; exact match will be verified before download.${RESET}"
     fi
-    
+
     DISPLAY_HEIGHTS=$(echo $DISPLAY_HEIGHTS | tr ' ' '\n' | sort -nur | uniq | tr '\n' ' ')
-    
+
     echo -e "${LIME}✅ Available standard qualities: $DISPLAY_HEIGHTS${RESET}"
     echo -n -e "${BRIGHT_CYAN}Enter max height (e.g. 720) [default=720]: ${RESET}"
     read -r MAX_HEIGHT || MAX_HEIGHT="720"
     MAX_HEIGHT="${MAX_HEIGHT:-720}"
     MAX_HEIGHT=$(echo "$MAX_HEIGHT" | xargs)
-    
+
     if [[ ! " ${STANDARD_HEIGHTS[*]} " =~ " $MAX_HEIGHT " ]]; then
         print_error "⚠️  Invalid height. Using default 720p."
         MAX_HEIGHT=720
     fi
-    
-    CHOSEN_HEIGHT="$MAX_HEIGHT"
-    if [[ -n "$ACTUAL_HEIGHTS" ]] && [[ ! " $ACTUAL_HEIGHTS " =~ " $MAX_HEIGHT " ]]; then
-        FALLBACK_HEIGHT=""
-        for h in $ACTUAL_HEIGHTS; do
-            if [[ "$h" -le "$MAX_HEIGHT" ]]; then
-                FALLBACK_HEIGHT="$h"
-                break
-            fi
-        done
 
-        if [[ -n "$FALLBACK_HEIGHT" ]]; then
-            CHOSEN_HEIGHT="$FALLBACK_HEIGHT"
-            echo -e "${YELLOW}⚠️  Exact ${MAX_HEIGHT}p is not available. Using ${CHOSEN_HEIGHT}p instead.${RESET}"
+    REQUESTED_HEIGHT="$MAX_HEIGHT"
+    echo -e "${SKY_BLUE}🔎 Verifying ${REQUESTED_HEIGHT}p is available...${RESET}"
+    CHOSEN_HEIGHT=$(resolve_video_quality "$REQUESTED_HEIGHT" "$ACTUAL_HEIGHTS" || true)
+
+    if [[ -n "$CHOSEN_HEIGHT" ]]; then
+        if [[ "$CHOSEN_HEIGHT" == "$REQUESTED_HEIGHT" ]]; then
+            echo -e "${LIME}✅ ${REQUESTED_HEIGHT}p confirmed — will download at requested quality.${RESET}"
         else
-            CHOSEN_HEIGHT="$MAX_HEIGHT"
-            echo -e "${YELLOW}⚠️  No lower exact match found. yt-dlp will try the closest available format.${RESET}"
+            echo -e "${YELLOW}⚠️  ${REQUESTED_HEIGHT}p is not available. Will download at ${CHOSEN_HEIGHT}p instead.${RESET}"
         fi
+    else
+        CHOSEN_HEIGHT="$REQUESTED_HEIGHT"
+        echo -e "${YELLOW}⚠️  Could not verify quality online. yt-dlp will try ${REQUESTED_HEIGHT}p first, then fall back if needed.${RESET}"
     fi
 
-    FORMAT="bestvideo[height=${CHOSEN_HEIGHT}][ext=mp4]+bestaudio[ext=m4a]/best[height=${CHOSEN_HEIGHT}][ext=mp4]/bestvideo[height=${CHOSEN_HEIGHT}]+bestaudio/best[height=${CHOSEN_HEIGHT}]"
+    FORMAT="$(build_video_format "$REQUESTED_HEIGHT")"
 else
     MAX_HEIGHT="N/A"
 fi
@@ -862,7 +933,14 @@ echo -e "${BRIGHT_CYAN}🚀 DOWNLOAD SUMMARY${RESET}"
 echo -e "${BRIGHT_MAGENTA}══════════════════════════════════════════════════════════════════════${RESET}"
 echo -e "${CYAN}URL:${RESET}          $URL"
 echo -e "${CYAN}Type:${RESET}         $( [[ "$IS_PLAYLIST" == "true" ]] && echo "${BRIGHT_GREEN}Playlist (ALL videos)${RESET}" || echo "${BRIGHT_BLUE}Single Video ONLY${RESET}" )"
-echo -e "${CYAN}Format:${RESET}       $( [[ "$IS_MP3" == "true" ]] && echo "${BRIGHT_MAGENTA}MP3 ($AUDIO_QUAL)${RESET}" || echo "${BRIGHT_BLUE}Video (max ${MAX_HEIGHT}p) WITH AUDIO${RESET}" )"
+if [[ "$IS_MP3" == "true" ]]; then
+    FORMAT_SUMMARY="${BRIGHT_MAGENTA}MP3 ($AUDIO_QUAL)${RESET}"
+elif [[ -n "${CHOSEN_HEIGHT:-}" && "${CHOSEN_HEIGHT}" != "${REQUESTED_HEIGHT:-$MAX_HEIGHT}" ]]; then
+    FORMAT_SUMMARY="${BRIGHT_BLUE}Video (${CHOSEN_HEIGHT}p, requested ${REQUESTED_HEIGHT:-$MAX_HEIGHT}p) WITH AUDIO${RESET}"
+else
+    FORMAT_SUMMARY="${BRIGHT_BLUE}Video (max ${REQUESTED_HEIGHT:-$MAX_HEIGHT}p) WITH AUDIO${RESET}"
+fi
+echo -e "${CYAN}Format:${RESET}       $FORMAT_SUMMARY"
 echo -e "${CYAN}Destination:${RESET}  ${BRIGHT_YELLOW}${OUTPUT_ROOT_DISPLAY:-$SESSION_ID}${RESET}"
 echo -e "${CYAN}JS Runtime:${RESET}   $( [[ -n "$JS_RUNTIME" ]] && echo "${BRIGHT_GREEN}${JS_RUNTIME##*=}${RESET}" || echo "${ORANGE}None${RESET}" )"
 echo -e "${CYAN}Fragments:${RESET}    $( [[ "$CONCURRENT_FRAGMENTS" -gt 1 ]] && echo "${BRIGHT_GREEN}$CONCURRENT_FRAGMENTS${RESET}" || echo "${BRIGHT_YELLOW}1${RESET}" )"

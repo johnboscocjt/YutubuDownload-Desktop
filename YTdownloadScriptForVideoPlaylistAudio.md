@@ -13,26 +13,61 @@
 
 ```
 
-**Author:** Johnbosco | **Last Updated:** April 20, 2026  
-**Version:** v2.0.0 — *Multi-Instance Shared-Cookie Edition*  
+**Author:** Johnbosco | **Last Updated:** June 12, 2026  
+**Version:** v2.0.1 — *Multi-Instance Shared-Cookie Edition*  
 🌍 *Tested across Dar es Salaam, Mwanza, Arusha & Zanzibar networks*  
 
 [![GitHub Repo](https://img.shields.io/badge/GitHub-Repository-181717?logo=github)](https://github.com/johnboscocjt/Youtube-Downloader-For-UbuntuTerminal)  
-[![Version](https://img.shields.io/badge/Version-2.0.0-brightgreen)](https://github.com/johnboscocjt/Youtube-Downloader-For-UbuntuTerminal/releases/tag/v2.0.0)
+[![Version](https://img.shields.io/badge/Version-2.0.1-brightgreen)](https://github.com/johnboscocjt/Youtube-Downloader-For-UbuntuTerminal/releases/tag/v2.0.1)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 </div>
 
 ---
 
-## 🆕 What's New in v2.0.0?
+## 🆕 What's New
 
-### 🧠 **MULTI-INSTANCE ARCHITECTURE (MAJOR RELEASE)**
+### v2.0.1 (2026-06-08) — Patch Release
+
+- **Fixed**: Video ID regex — replaced unsupported Perl-style `(?:...)` groups with Bash ERE-compatible patterns
+- **Improved**: `install.sh` can be run again safely; detects existing installs and uses the local `YutubuDownload` when run from a cloned repo
+- **Improved**: Quality resolver probes with `yt-dlp --simulate` before download (exact height first, verified fallback only when needed)
+- **Added**: Reinstall/update instructions in `TROUBLESHOOTING.md` and on-screen reinstall hint when a YouTube URL cannot be parsed
+
+**Upgrade:**
+
+```bash
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/johnboscocjt/Youtube-Downloader-For-UbuntuTerminal/main/install.sh)"
+ytd --version
+# Expected: ytd (YutubuDownload) v2.0.1 (2026-06-08) • Tanzania-Optimized • MULTI-INSTANCE + SHARED COOKIES
+```
+
+### v2.0.0 (2026-04-20) — Multi-Instance Shared-Cookie Edition
+
+v2.0.0 combines anti-bot handling, resilient download controls, and user-friendly progress behavior for unstable networks.
+
+**Highlights:**
+- Safe multi-instance downloads for parallel terminal usage
+- Shared cookie service with lock-based refresh
+- Session-isolated temp/log structure for cleaner concurrent runs
+- Exact quality targeting with fallback to nearest lower available format
+- Adaptive progress with low-network mode when transfer telemetry is unstable
+- `ytd` as simplified command alias; `YutubuDownload` compatibility retained
+
+**Technical upgrades:**
+- Cookie architecture: shared file + lock refresh model
+- Session isolation for temp/log paths
+- Deno-first runtime with Node fallback
+- Improved retry/resume protections for unstable links
+
+> On unstable networks, UI behavior may intentionally simplify to preserve trust and reduce noisy ETA/speed swings.
+
+### 🧠 **MULTI-INSTANCE ARCHITECTURE (v2.0.0)**
 - **Added**: Safe concurrent downloads from multiple terminals
 - **Added**: Shared `cookies.txt` service with refresh locking
 - **Added**: Session isolation (`SESSION_ID`, temp dirs, logs, output roots)
 - **Added**: Optional fragment tuning with `YTDL_CONCURRENT_FRAGMENTS`
-- **Improved**: Exact quality targeting and fallback behavior
+- **Improved**: Exact quality targeting and verified fallback behavior
 - **Removed**: Forced Chrome process killing for cookie refresh
 
 ### ✨ **CLEAN PROGRESS BAR DISPLAY**
@@ -73,9 +108,9 @@ Title ██████████░░░░ 78.4% | 3.55MiB | ETA: 00:01 | 
 
 ---
 
-## 📦 The 4 Files in This Repository
+## 📦 Essential Files in This Repository
 
-This project uses **four essential files** that work together to give you a seamless, Tanzania-optimized YouTube downloading experience:
+These files work together to give you a seamless, Tanzania-optimized YouTube downloading experience:
 
 ### 1. `README.md` — **Your Quick Start Guide**
 - ✅ What users see first on GitHub
@@ -83,30 +118,37 @@ This project uses **four essential files** that work together to give you a seam
 - ✅ Key features, usage tips, and Tanzania-specific advice
 - 🎯 **Purpose**: Get you up and running in under 60 seconds
 
-### 2. `YTdownloadScriptForVideoPlaylistAudio.md` — **Complete Technical Documentation**
+### 2. `DOWNLOAD_GUIDE.md` — **How Downloads Work (with Diagrams)**
+- 🎬 How video quality is maintained from probe to final MP4
+- 📹 Single video, playlist, and MP3 flows explained step by step
+- 📊 Mermaid diagrams for each mode
+- 🎯 **Purpose**: Understand what `ytd` does before and during every download
+
+### 3. `YTdownloadScriptForVideoPlaylistAudio.md` — **Complete Technical Documentation**
 - 📚 Deep dive into how everything works
 - 🔧 Explains all 4 files and their roles
 - 🛠️ Troubleshooting, Deno vs Node.js, folder logic
 - 💡 Why each design choice was made for Tanzanian users
 - 🎯 **Purpose**: Your go-to reference for advanced use or fixing issues
 
-### 3. `YutubuDownload` — **The Main Downloader (No Extension!)**
+### 4. `YutubuDownload` — **The Main Downloader (No Extension!)**
 - ⚙️ The actual Bash script that downloads videos/playlists/MP3s
 - ✅ Handles: bot bypass, resume support, smart folders, quality selection
 - ✅ Supports `--version` flag for verification
 - ✅ Uses Chrome cookies + Deno to defeat YouTube's 2026 anti-bot systems
-- ✅ **v2.0.0**: Multi-instance safe downloads with shared cookie store
+- ✅ **v2.0.1**: Multi-instance safe downloads with shared cookie store and probe-based quality resolver
 - 🎯 **Purpose**: Run this to download — it's the heart of the tool
 
-### 4. `install.sh` — **The Silent Installer**
+### 5. `install.sh` — **The Silent Installer**
 - 🔌 Installs **all dependencies**: `yt-dlp`, `ffmpeg`, `deno`, Python venv with `secretstorage` + `cryptography`
 - 📂 Sets up `~/youtubedownloading/yt-venv` for cookie decryption
 - 📥 Downloads and installs `YutubuDownload` to `/usr/local/bin/`
 - ❌ **Never runs the downloader** — only prepares your system
 - 🎯 **Purpose**: One command to install everything safely and correctly
 
-> 💡 **Why 4 files?**  
-> - `README.md` = Marketing + Quick Start  
+> 💡 **Why these files?**  
+> - `README.md` = Quick Start  
+> - `DOWNLOAD_GUIDE.md` = Quality + download modes (diagrams)  
 > - `YTdownloadScript...md` = Full Manual  
 > - `YutubuDownload` = The Engine  
 > - `install.sh` = The Setup Wizard  
@@ -170,15 +212,28 @@ This toolchain is **distro-agnostic and Unix-based**.
 
 ---
 
-## 📈 Why v2.0.0 Is More Powerful Than Typical Wrappers
+## 📈 Why v2.0.1 Is More Powerful Than Typical Wrappers
 
-| Capability | v2.0.0 ytd | Typical wrapper |
+| Capability | ytd v2.0.1 | Typical wrapper |
 |---|---|---|
 | Parallel terminal safety | ✅ Lock + isolated session state | ⚠️ Often conflicts |
 | Cookie refresh design | ✅ Shared file + lock coordination | ⚠️ Usually ad-hoc |
-| Quality control | ✅ Exact targeting + fallback logic | ⚠️ Best-effort only |
+| Quality control | ✅ Probe-verified exact height + fallback chain | ⚠️ Best-effort only |
 | Progress behavior | ✅ Single-line default + adaptive fallback | ⚠️ Noisy or misleading |
 | Output organization | ✅ Predictable single/playlist routing | ⚠️ Easy to mix files |
+
+---
+
+## 🎬 Quality, Video, Playlist & Audio
+
+For a full walkthrough with diagrams, see **[DOWNLOAD_GUIDE.md](DOWNLOAD_GUIDE.md)**. It covers:
+
+- How video quality is maintained (list → probe → format chain → merge)
+- Single video download flow and output paths
+- Full playlist download flow and folder naming
+- MP3 / audio extraction (single and playlist)
+
+**Quality resolver (short summary):** When you enter a height (e.g. `1080`), YutubuDownload probes with `yt-dlp --simulate` before download, tries your exact choice first, then falls back only when verified unavailable. The download format chain repeats that priority during the actual fetch.
 
 ---
 
@@ -204,7 +259,7 @@ YouTube's anti-bot systems (especially in East Africa) cause frequent failures w
 - Data-saving mode: Fallback to 720p when high-res fails  
 - Offline-friendly: Works after brief connectivity loss  
 
-✅ **Clean Progress Display + Session Isolation (v2.0.0)**  
+✅ **Clean Progress Display + Session Isolation (v2.0.0+)**  
 - Single-line updates: `Title VideoID ████████████████████░ 100.0% | 2.98MiB | ETA: 00:00 | 1.68MiB/s`  
 - File size in real-time  
 - Video ID identification (first 8 chars)  
@@ -220,7 +275,7 @@ YouTube's anti-bot systems (especially in East Africa) cause frequent failures w
 - Deno-powered JS challenge solving (YouTube's 2026 requirement)  
 
 ✅ **Flexible Output**  
-- Video: Any resolution (auto-detects available qualities)  
+- Video: Standard resolutions (360p–4K) with probe-verified exact targeting  
 - MP3: 320kbps (VBR), 192kbps, or 128kbps  
 - Numbered playlist files: `01 - Title.mp4`  
 
@@ -250,16 +305,16 @@ Since late 2025, YouTube encrypts video signatures in JavaScript. yt-dlp **requi
 
 ---
 
-## 🧪 Full Script Code: `YutubuDownload` (v2.0.0)
+## 🧪 Full Script Code: `YutubuDownload` (v2.0.1)
 
-> This is the exact content of the `YutubuDownload` file in your repo - **Updated with clean progress bar**.
+> Reference copy of the main script. For the latest source, see `YutubuDownload` in this repository (includes quality resolver helpers).
 
 ```bash
 #!/usr/bin/env bash
 # YutubuDownload - Tanzania-Optimized YouTube Downloader for Ubuntu Terminal
-# Author: Johnbosco | Updated: April 20, 2026
+# Author: Johnbosco | Updated: June 08, 2026
 # GitHub: https://github.com/johnboscocjt/Youtube-Downloader-For-UbuntuTerminal
-# Version: 2.0.0 — Multi-Instance Shared-Cookie Architecture
+# Version: 2.0.1 — Multi-Instance Shared-Cookie Architecture
 
 set -euo pipefail
 
@@ -622,7 +677,7 @@ get_and_display_metadata() {
 
 # Version check
 if [[ "${1:-}" == "--version" ]] || [[ "${1:-}" == "-v" ]]; then
-    echo "ytd (YutubuDownload) v2.0.0 (2026-04-20) • Tanzania-Optimized • MULTI-INSTANCE + SHARED COOKIES"
+    echo "ytd (YutubuDownload) v2.0.1 (2026-06-08) • Tanzania-Optimized • MULTI-INSTANCE + SHARED COOKIES"
     exit 0
 fi
 
@@ -643,7 +698,7 @@ fi
 } >/dev/tty 2>/dev/null || { echo "ytd"; }
 
 # === CUSTOM HEADER ===
-echo -e "${BRIGHT_CYAN}ytd (YutubuDownload), v2.0.0${RESET}"
+echo -e "${BRIGHT_CYAN}ytd (YutubuDownload), v2.0.1${RESET}"
 
 # === SMART COOKIE REFRESH ===
 echo -e "${SKY_BLUE}🔄 Preparing shared cookies (multi-instance safe)...${RESET}"
@@ -1353,12 +1408,19 @@ echo -e "\033[0m"
 
 ## 📋 Changelog
 
+### v2.0.1 (2026-06-08)
+- **Fixed**: Bash-compatible video ID regex (no Perl-style `(?:...)` groups)
+- **Improved**: Safe reinstall flow in `install.sh` (local repo or GitHub)
+- **Improved**: Quality resolver probes exact height with `yt-dlp --simulate` before fallback
+- **Added**: Reinstall/update section in `TROUBLESHOOTING.md`; on-screen hint for bad URLs
+
 ### v2.0.0 (2026-04-20)
 - **Added**: Multi-instance architecture for separate terminal workers
 - **Added**: Shared cookie export file and lock-based refresh
 - **Added**: Session output root/temp/log isolation
 - **Added**: Configurable `YTDL_CONCURRENT_FRAGMENTS`
-- **Improved**: Better quality selection behavior and progress output
+- **Added**: `ytd` command alias with `YutubuDownload` compatibility
+- **Improved**: Exact quality targeting, adaptive low-network progress, session isolation
 
 ### v1.1.6 (2026-02-10)
 - **Fixed**: Progress bar display - now shows single clean line
@@ -1418,8 +1480,15 @@ ytd
 ### Check Version
 ```bash
 ytd --version
-# Output: ytd (YutubuDownload) v2.0.0 (2026-04-20) • Tanzania-Optimized • MULTI-INSTANCE + SHARED COOKIES
+# Output: ytd (YutubuDownload) v2.0.1 (2026-06-08) • Tanzania-Optimized • MULTI-INSTANCE + SHARED COOKIES
 ```
+
+### Upgrade to Latest
+```bash
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/johnboscocjt/Youtube-Downloader-For-UbuntuTerminal/main/install.sh)"
+```
+
+From a cloned repo: `sudo bash install.sh` in the project directory.
 
 ### Critical Tanzania-Specific Tips  
 1. **Close Chrome completely** before running (required for fresh cookies)  
@@ -1445,6 +1514,8 @@ ytd --version
 | Permission denied on script | `sudo chmod +x /usr/local/bin/YutubuDownload` |
 | Playlist files mixing | Always choose "y" for folder creation (uses `[ID]` naming) |
 | Progress shows `low-network` | Not broken; unstable connection detected. Script auto-simplifies progress and keeps downloading. |
+| Wrong quality downloaded | Reinstall for latest quality resolver; enter standard height (360/480/720/1080/1440/2160). Script probes exact height before fallback. |
+| `invalid regular expression` / video ID error | Reinstall — fixed in v2.0.1. See `TROUBLESHOOTING.md`. |
 | **Red error flashes** | Indicates critical failure — follow on-screen Tanzania Fix |
 
 ---
@@ -1481,7 +1552,7 @@ ytd --version
 ⭐ **If this saves you time/data in Tanzania, please star the repo!**  
 [![GitHub Stars](https://img.shields.io/github/stars/johnboscocjt/Youtube-Downloader-For-UbuntuTerminal?style=social)](https://github.com/johnboscocjt/Youtube-Downloader-For-UbuntuTerminal)  
 
-**"YutubuDownload v2.0.0: Multi-instance downloads with shared cookies for Tanzania"**  
+**"YutubuDownload v2.0.1: Multi-instance downloads with shared cookies for Tanzania"**  
 — Johnbosco, Dar es Salaam 🇹🇿  
 
 </div>

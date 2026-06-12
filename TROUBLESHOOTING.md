@@ -1,5 +1,8 @@
 # 🛠️ Troubleshooting Guide
 
+Release history and full changelog live in [README.md](README.md) and [YTdownloadScriptForVideoPlaylistAudio.md](YTdownloadScriptForVideoPlaylistAudio.md).  
+How quality and download modes work: [DOWNLOAD_GUIDE.md](DOWNLOAD_GUIDE.md).
+
 ## 🔁 Reinstall or Update (Fix Most Issues)
 
 Re-running the installer is **safe** — it updates `ytd`, refreshes dependencies, and does not remove your downloads or settings.

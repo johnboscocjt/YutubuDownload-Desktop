@@ -16,7 +16,7 @@
    ░░░░░      ░░░░░░░░    ░░░░░    ░░░░░░░░ ░░░░░░░░    ░░░░░░░░ ░░░░░░░░░░    ░░░░░░     ░░░░ ░░░░    ░░░░ ░░░░░ ░░░░░  ░░░░░░   ░░░░░░░░  ░░░░░░░░ 
 ```
 
-**Author:** Johnbosco | **Last Updated:** June 08, 2026  
+**Author:** Johnbosco | **Last Updated:** June 12, 2026  
 **Version:** v2.0.1 — *Multi-Instance Shared-Cookie Edition*  
 🌍 *Tested across Dar es Salaam, Mwanza, Arusha & Zanzibar networks*  
 
@@ -31,9 +31,43 @@
 
 ---
 
-## 🆕 What's New in v2.0.0?
+## 🆕 What's New
 
-### 🧠 **MULTI-INSTANCE ARCHITECTURE (MAJOR RELEASE)**
+### v2.0.1 (2026-06-08) — Patch Release
+
+- **Fixed**: Bash-compatible video ID regex (no more `invalid regular expression` errors)
+- **Improved**: Safe reinstall via `install.sh` (detects existing installs; uses local script when run from a cloned repo)
+- **Improved**: Quality resolver probes with `yt-dlp --simulate` before download — your typed resolution is verified first, then falls back only when unavailable
+- **Added**: Reinstall/update guidance in `TROUBLESHOOTING.md` and on-screen hint when a YouTube URL cannot be parsed
+
+**Upgrade & verify:**
+
+```bash
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/johnboscocjt/Youtube-Downloader-For-UbuntuTerminal/main/install.sh)"
+ytd --version
+# Expected: ytd (YutubuDownload) v2.0.1 (2026-06-08) • Tanzania-Optimized • MULTI-INSTANCE + SHARED COOKIES
+```
+
+### v2.0.0 (2026-04-20) — Multi-Instance Shared-Cookie Edition
+
+v2.0.0 is focused on reliability under real-world network constraints: anti-bot handling, resilient download controls, and progress behavior that keeps downloads moving on unstable links.
+
+**Highlights:**
+- Safe multi-instance downloads for parallel terminal usage
+- Shared cookie service with lock-based refresh
+- Session-isolated temp/log structure for cleaner concurrent runs
+- Exact quality targeting with fallback to nearest lower available format
+- Adaptive progress with low-network mode when transfer telemetry is unstable
+- `ytd` as the primary command; `YutubuDownload` remains compatible
+
+**Compatibility:**
+- Primary launch command: `ytd`
+- Compatibility launch command: `YutubuDownload`
+- Ubuntu terminal workflows supported
+
+> **Note:** This release is tuned for reliability, not just speed. On unstable networks, the UI may intentionally simplify to reduce noisy ETA/speed swings while the download continues.
+
+### 🧠 **MULTI-INSTANCE ARCHITECTURE (v2.0.0)**
 - **Added**: Safe multi-terminal downloads with per-run `SESSION_ID`
 - **Added**: Shared `cookies.txt` store with file-lock refresh model
 - **Added**: Session-specific temp/log folders for clean isolation
@@ -43,8 +77,9 @@
 
 ### 🚀 **BETTER PROGRESS BAR + QUALITY PICKING**
 - **Fixed**: Progress output now stays cleaner as a single terminal line
-- **Fixed**: User-selected quality now targets exact resolution when available
-- **Improved**: Falls back to nearest lower available resolution when exact one is missing
+- **Improved**: Quality resolver lists video-only formats, then **verifies your choice with yt-dlp before download**
+- **Improved**: Tries exact requested height first (e.g. 1080p); falls back to nearest lower standard only when probe confirms it is unavailable
+- **Improved**: Format chain tries exact height, then `height<=requested`, so downloads do not downgrade prematurely on slow probes
 - **Improved**: Better quality consistency for 1080p+ selections
 
 ### ✨ **CLEAN PROGRESS BAR DISPLAY**
@@ -114,7 +149,8 @@ flowchart LR
   ORCH --> YTDLP[yt-dlp Engine]
   ORCH --> FFMPEG[ffmpeg mux/convert]
 
-  ORCH --> QSEL[Exact Quality Picker]
+  ORCH --> QSEL[Quality Resolver]
+  QSEL --> PROBE[yt-dlp simulate probe]
   QSEL --> FBK[Nearest Lower Fallback]
 
   ORCH --> PROG[Progress Controller]
@@ -183,7 +219,7 @@ ytd
   Playlists saved as `Title [PLAYLIST_ID]` to prevent mixing same-name playlists (common with Bongo Flava compilations!)
   
 - **🎵 Flexible Output**  
-  Video (any resolution) or MP3 (320kbps/192kbps/128kbps)
+  Video (360p–4K with probe-verified quality) or MP3 (320kbps/192kbps/128kbps)
   
 - **💾 Data-Saving**  
   Never re-downloads completed videos are tracked 
@@ -223,6 +259,8 @@ In short: this workflow is **distro-agnostic and Unix-based**.
 
 ## 📘 How To Use (Follow-Through)
 
+> For diagrams and a deeper explanation of quality, video, playlist, and MP3 flows, see **[DOWNLOAD_GUIDE.md](DOWNLOAD_GUIDE.md)**.
+
 ### 1. Download a Single Video
 1. Run `ytd`
 2. Paste video URL
@@ -254,29 +292,46 @@ Expected behavior:
 
 ## 📚 Full Documentation
 
-For detailed setup, troubleshooting, and advanced usage:  
-👉 **[Complete Documentation](https://github.com/johnboscocjt/Youtube-Downloader-For-UbuntuTerminal/blob/main/YTdownloadScriptForVideoPlaylistAudio.md)**
+| Guide | What it covers |
+|-------|----------------|
+| **[Download Guide](DOWNLOAD_GUIDE.md)** | How quality is maintained, and how single video, playlist, and MP3 downloads work (with diagrams) |
+| **[Complete Documentation](YTdownloadScriptForVideoPlaylistAudio.md)** | Setup, troubleshooting, architecture, and advanced usage |
+| **[Troubleshooting](TROUBLESHOOTING.md)** | Reinstall, regex fix, cookie errors |
 
 ---
 
 ## 🔁 How to Update
 
+Re-running the installer is **safe** — it refreshes `ytd`, dependencies, and does not remove your downloads.
+
 ```bash
-# One command to update to latest version
+# One command to update to latest version (recommended)
 sudo bash -c "$(curl -sL https://raw.githubusercontent.com/johnboscocjt/Youtube-Downloader-For-UbuntuTerminal/main/install.sh)"
 ```
 
-## OR Manual Update to v2.0.0:
+**From a cloned copy of this repository:**
+
 ```bash
-# Fetch latest version
+cd /path/to/Youtube-Downloader-For-UbuntuTerminal
+sudo bash install.sh
+```
+
+**Verify after update:**
+
+```bash
+ytd --version
+# Expected: ytd (YutubuDownload) v2.0.1 (2026-06-08) • Tanzania-Optimized • MULTI-INSTANCE + SHARED COOKIES
+```
+
+**Manual script-only update (alternative):**
+
+```bash
 sudo curl -sL https://raw.githubusercontent.com/johnboscocjt/Youtube-Downloader-For-UbuntuTerminal/main/YutubuDownload -o /usr/local/bin/YutubuDownload
 sudo chmod +x /usr/local/bin/YutubuDownload
 sudo ln -sf /usr/local/bin/YutubuDownload /usr/local/bin/ytd
-
-# Check version
-ytd --version
-# Should show: ytd (YutubuDownload) v2.0.1 (2026-06-08) • Tanzania-Optimized • MULTI-INSTANCE + SHARED COOKIES
 ```
+
+Run `ytd` **without** `sudo` after installing.
 
 ---
 
@@ -345,6 +400,7 @@ ytd --version
 ### v2.0.1 (2026-06-08)
 - **Fixed**: Bash-compatible video ID regex (no more `invalid regular expression` error)
 - **Improved**: Safe reinstall support in `install.sh` (local repo or GitHub)
+- **Improved**: Quality resolver probes exact height with `yt-dlp --simulate` before falling back
 - **Added**: Troubleshooting guide entries for regex and reinstall fixes
 
 ### v2.0.0 (2026-04-20)
@@ -412,7 +468,7 @@ ytd --version
 ⭐ **If this saves you time/data in Tanzania, please star the repo!**  
 [![GitHub Stars](https://img.shields.io/github/stars/johnboscocjt/Youtube-Downloader-For-UbuntuTerminal?style=social)](https://github.com/johnboscocjt/Youtube-Downloader-For-UbuntuTerminal)  
 
-**"YutubuDownload v2.0.0: Multi-instance downloads with shared cookies for Tanzania"**  
+**"YutubuDownload v2.0.1: Multi-instance downloads with shared cookies for Tanzania"**  
 — Johnbosco, Dar es Salaam 🇹🇿  
 
 </div>
