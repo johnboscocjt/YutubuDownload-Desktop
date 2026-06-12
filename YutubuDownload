@@ -564,7 +564,7 @@ get_and_display_metadata() {
 
 # Version check
 if [[ "${1:-}" == "--version" ]] || [[ "${1:-}" == "-v" ]]; then
-    echo "ytd (YutubuDownload) v2.0.2 (2026-06-08) • Tanzania-Optimized • MULTI-INSTANCE + SHARED COOKIES"
+    echo "ytd (YutubuDownload) v2.0.1 (2026-06-08) • Tanzania-Optimized • MULTI-INSTANCE + SHARED COOKIES"
     exit 0
 fi
 
@@ -585,7 +585,7 @@ fi
 } >/dev/tty 2>/dev/null || { echo "ytd"; }
 
 # === CUSTOM HEADER ===
-echo -e "${BRIGHT_CYAN}ytd (YutubuDownload), v2.0.2${RESET}"
+echo -e "${BRIGHT_CYAN}ytd (YutubuDownload), v2.0.1${RESET}"
 
 # === SMART COOKIE REFRESH ===
 echo -e "${SKY_BLUE}🔄 Preparing shared cookies (multi-instance safe)...${RESET}"

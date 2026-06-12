@@ -33,12 +33,14 @@
 
 ## 🆕 What's New
 
-### v2.0.1 (2026-06-08) — Patch Release
+### v2.0.1 (2026-06-08) — Latest Release
 
+- **Added**: **Loop download mode** — stay in `ytd` and paste multiple URLs until you type `q`
+- **Improved**: **Stable video quality** — probes exact height with `yt-dlp --simulate` before download; falls back only when verified unavailable
+- **Fixed**: MP3 downloads with `bestaudio/best` fallback; auto-refresh `yt-dlp` without sudo
 - **Fixed**: Bash-compatible video ID regex (no more `invalid regular expression` errors)
 - **Improved**: Safe reinstall via `install.sh` (detects existing installs; uses local script when run from a cloned repo)
-- **Improved**: Quality resolver probes with `yt-dlp --simulate` before download — your typed resolution is verified first, then falls back only when unavailable
-- **Added**: Reinstall/update guidance in `TROUBLESHOOTING.md` and on-screen hint when a YouTube URL cannot be parsed
+- **Added**: `DOWNLOAD_GUIDE.md`, reinstall guidance in `TROUBLESHOOTING.md`, on-screen hint when URL parsing fails
 
 **Upgrade & verify:**
 
@@ -398,10 +400,12 @@ Run `ytd` **without** `sudo` after installing.
 ## 📋 Changelog
 
 ### v2.0.1 (2026-06-08)
-- **Fixed**: Bash-compatible video ID regex (no more `invalid regular expression` error)
-- **Improved**: Safe reinstall support in `install.sh` (local repo or GitHub)
-- **Improved**: Quality resolver probes exact height with `yt-dlp --simulate` before falling back
-- **Added**: Troubleshooting guide entries for regex and reinstall fixes
+- **Added**: Loop download mode (keep pasting URLs until `q`)
+- **Improved**: Stable video quality — probe-based resolver + exact-first format chain
+- **Fixed**: MP3 downloads (`bestaudio/best`); auto-refresh `yt-dlp` without sudo
+- **Fixed**: Bash-compatible video ID regex
+- **Improved**: Safe reinstall in `install.sh`; `DOWNLOAD_GUIDE.md` with diagrams
+- **Added**: Troubleshooting entries for regex and reinstall fixes
 
 ### v2.0.0 (2026-04-20)
 - **Added**: Multi-instance safe architecture for parallel terminal usage

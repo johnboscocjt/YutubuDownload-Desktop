@@ -27,12 +27,14 @@
 
 ## 🆕 What's New
 
-### v2.0.1 (2026-06-08) — Patch Release
+### v2.0.1 (2026-06-08) — Latest Release
 
-- **Fixed**: Video ID regex — replaced unsupported Perl-style `(?:...)` groups with Bash ERE-compatible patterns
-- **Improved**: `install.sh` can be run again safely; detects existing installs and uses the local `YutubuDownload` when run from a cloned repo
-- **Improved**: Quality resolver probes with `yt-dlp --simulate` before download (exact height first, verified fallback only when needed)
-- **Added**: Reinstall/update instructions in `TROUBLESHOOTING.md` and on-screen reinstall hint when a YouTube URL cannot be parsed
+- **Added**: Loop download mode — stay in `ytd` and paste multiple URLs until you type `q`
+- **Improved**: Stable video quality — probe-based resolver with exact-first format chain
+- **Fixed**: MP3 downloads (`bestaudio/best` fallback); auto-refresh `yt-dlp` without sudo
+- **Fixed**: Video ID regex — Bash ERE-compatible patterns (no Perl-style `(?:...)` groups)
+- **Improved**: Safe reinstall via `install.sh` (local repo or GitHub)
+- **Added**: `DOWNLOAD_GUIDE.md`; reinstall instructions in `TROUBLESHOOTING.md`
 
 **Upgrade:**
 
@@ -1409,10 +1411,12 @@ echo -e "\033[0m"
 ## 📋 Changelog
 
 ### v2.0.1 (2026-06-08)
-- **Fixed**: Bash-compatible video ID regex (no Perl-style `(?:...)` groups)
-- **Improved**: Safe reinstall flow in `install.sh` (local repo or GitHub)
-- **Improved**: Quality resolver probes exact height with `yt-dlp --simulate` before fallback
-- **Added**: Reinstall/update section in `TROUBLESHOOTING.md`; on-screen hint for bad URLs
+- **Added**: Loop download mode (keep pasting URLs until `q`)
+- **Improved**: Stable video quality — probe-based resolver + exact-first format chain
+- **Fixed**: MP3 downloads (`bestaudio/best`); auto-refresh `yt-dlp` without sudo
+- **Fixed**: Bash-compatible video ID regex
+- **Improved**: Safe reinstall in `install.sh`; `DOWNLOAD_GUIDE.md` with diagrams
+- **Added**: Reinstall section in `TROUBLESHOOTING.md`; on-screen hint for bad URLs
 
 ### v2.0.0 (2026-04-20)
 - **Added**: Multi-instance architecture for separate terminal workers
