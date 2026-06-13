@@ -73,7 +73,7 @@ function CodeBlock({ children }: { children: string }) {
 
 export default function LinuxInstallGuide() {
   return (
-    <section id="linux-install" className="section-linux-guide">
+    <section id="linux-install" className="section-install-guide section-install-guide--linux">
       <div className="container">
         <Reveal>
           <div className="section-head">

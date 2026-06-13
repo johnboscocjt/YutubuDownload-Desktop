@@ -22,6 +22,8 @@ export const APP = {
   windowsInstaller: {
     filename: "YutubuDownload_2.0.1_x64-setup.exe",
     publicPath: "/downloads/YutubuDownload_2.0.1_x64-setup.exe",
+    /** Start menu / Apps & Features name */
+    appMenuName: "YutubuDownload",
   },
 } as const;
 

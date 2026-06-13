@@ -10,7 +10,7 @@ const LINKS = [
   { href: "#screenshots", label: "Screenshots" },
   { href: "#how", label: "How it works" },
   { href: "#download", label: "Download" },
-  { href: "#linux-install", label: "Install" },
+  { href: "#install-guides", label: "Install" },
 ];
 
 export default function Nav() {

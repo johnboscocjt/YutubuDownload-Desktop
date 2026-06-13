@@ -7,6 +7,7 @@ import ScreenshotsSection from "./ScreenshotsSection";
 import StepsSection from "./StepsSection";
 import DownloadSection from "./DownloadSection";
 import LinuxInstallGuide from "./LinuxInstallGuide";
+import WindowsInstallGuide from "./WindowsInstallGuide";
 import AppIcon from "./AppIcon";
 import { IconGithub } from "./svg/Icons";
 
@@ -22,7 +23,10 @@ export default function HomePage() {
         <ScreenshotsSection />
         <StepsSection />
         <DownloadSection />
-        <LinuxInstallGuide />
+        <div id="install-guides">
+          <LinuxInstallGuide />
+          <WindowsInstallGuide />
+        </div>
       </main>
 
       <footer className="footer">
@@ -43,7 +47,8 @@ export default function HomePage() {
               <IconGithub size={16} />
               GitHub
             </a>
-            <a href="#linux-install">Linux install guide</a>
+            <a href="#linux-install">Linux install</a>
+            <a href="#windows-install">Windows install</a>
             <a href={`https://github.com/${APP.terminalRepo}/blob/main/TROUBLESHOOTING.md`}>
               Troubleshooting
             </a>

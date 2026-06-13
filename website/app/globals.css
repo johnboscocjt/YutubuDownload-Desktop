@@ -1562,14 +1562,26 @@ section {
   opacity: 0.8;
 }
 
-/* ─── Linux install guide ─── */
-.section-linux-guide {
+/* ─── Platform install guides ─── */
+.section-install-guide {
   padding: 3rem 0 2.5rem;
-  background: linear-gradient(180deg, transparent 0%, rgba(91, 141, 255, 0.03) 50%, transparent 100%);
 }
 
-.section-linux-guide .section-head {
+.section-install-guide--linux {
+  background: linear-gradient(180deg, transparent 0%, rgba(0, 230, 184, 0.03) 50%, transparent 100%);
+}
+
+.section-install-guide--windows {
+  background: linear-gradient(180deg, transparent 0%, rgba(91, 141, 255, 0.04) 50%, transparent 100%);
+  padding-top: 1.5rem;
+}
+
+.section-install-guide .section-head {
   margin-bottom: 1.5rem;
+}
+
+.guide-methods-stack {
+  grid-template-columns: 1fr;
 }
 
 .guide-package-pill {
