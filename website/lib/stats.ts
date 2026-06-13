@@ -1,15 +1,17 @@
 import { kv } from "@vercel/kv";
 import { type Platform } from "./config";
 import { githubAllReleasesTotal, fetchAllReleases } from "./github";
-import { incrementLocalStats, readLocalStats } from "./stats-store";
+import {
+  incrementLocalStats,
+  readLocalStats,
+  resolveStorageBackend,
+} from "./stats-store";
 
 const TOTAL_KEY = "stats:downloads:total";
 const PLATFORM_PREFIX = "stats:downloads:platform:";
 
 function kvReady(): boolean {
-  return Boolean(
-    process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN
-  );
+  return resolveStorageBackend() === "kv";
 }
 
 export interface DownloadStats {
@@ -19,8 +21,7 @@ export interface DownloadStats {
   byPlatform: Record<Platform, number>;
   updatedAt: string;
   live: boolean;
-  /** Where site clicks are stored: kv, local file, or none */
-  storage: "kv" | "local" | "none";
+  storage: "kv" | "blob" | "local" | "none";
 }
 
 async function readPlatformCountsFromKv(): Promise<Record<Platform, number>> {
@@ -38,22 +39,22 @@ async function readPlatformCountsFromKv(): Promise<Record<Platform, number>> {
 export async function getDownloadStats(): Promise<DownloadStats> {
   const releases = await fetchAllReleases();
   const githubRelease = githubAllReleasesTotal(releases);
+  const storage = resolveStorageBackend();
 
   let siteTotal = 0;
   let byPlatform: Record<Platform, number>;
-  let storage: DownloadStats["storage"] = "none";
   let updatedAt = new Date().toISOString();
 
   if (kvReady()) {
     siteTotal = (await kv.get<number>(TOTAL_KEY)) ?? 0;
     byPlatform = await readPlatformCountsFromKv();
-    storage = "kv";
-  } else {
+  } else if (storage === "blob" || storage === "local") {
     const local = await readLocalStats();
     siteTotal = local.total;
     byPlatform = local.byPlatform;
-    storage = "local";
     updatedAt = local.updatedAt;
+  } else {
+    byPlatform = { linux: 0, windows: 0, macos: 0, terminal: 0 };
   }
 
   const siteTracked = siteTotal;
@@ -65,7 +66,7 @@ export async function getDownloadStats(): Promise<DownloadStats> {
     githubRelease,
     byPlatform,
     updatedAt,
-    live: kvReady() || storage === "local",
+    live: storage !== "none",
     storage,
   };
 }

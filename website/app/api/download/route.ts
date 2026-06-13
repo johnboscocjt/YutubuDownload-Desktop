@@ -60,11 +60,7 @@ export async function GET(req: NextRequest) {
 
   // Serve .deb directly from this site (attachment download starts immediately)
   if (platform === "linux" && match.url.includes("/api/download")) {
-    try {
-      await incrementDownload(platform);
-    } catch {
-      /* counter optional */
-    }
+    await incrementDownload(platform);
     return serveLocalDeb();
   }
 
@@ -78,11 +74,7 @@ export async function GET(req: NextRequest) {
     url.includes("github.com") && url.includes("/releases/download/");
 
   if (!isGithubReleaseAsset) {
-    try {
-      await incrementDownload(platform);
-    } catch {
-      /* counter optional */
-    }
+    await incrementDownload(platform);
   }
 
   return NextResponse.redirect(url, 302);
