@@ -36,9 +36,10 @@ function storePath(): string {
 }
 
 function blobReady(): boolean {
+  // Prefer explicit read-write token; BLOB_STORE_ID alone needs a linked store + OIDC.
+  if (process.env.BLOB_READ_WRITE_TOKEN) return true;
   return Boolean(
-    process.env.BLOB_READ_WRITE_TOKEN ||
-      process.env.BLOB_STORE_ID ||
+    process.env.BLOB_STORE_ID &&
       (process.env.VERCEL === "1" && process.env.VERCEL_OIDC_TOKEN)
   );
 }
@@ -48,13 +49,18 @@ function isVercelRuntime(): boolean {
 }
 
 async function readBlobStats(): Promise<LocalStats> {
-  const { head } = await import("@vercel/blob");
+  const { get, head } = await import("@vercel/blob");
   try {
-    const meta = await head(STATS_BLOB_PATH);
-    const res = await fetch(meta.url);
-    if (!res.ok) return emptyStats();
-    const parsed = (await res.json()) as Partial<LocalStats>;
-    return normalizeStats(parsed);
+    await head(STATS_BLOB_PATH);
+  } catch {
+    return emptyStats();
+  }
+
+  try {
+    const result = await get(STATS_BLOB_PATH, { access: "private" });
+    if (!result || result.statusCode !== 200 || !result.stream) return emptyStats();
+    const text = await new Response(result.stream).text();
+    return normalizeStats(JSON.parse(text) as Partial<LocalStats>);
   } catch {
     return emptyStats();
   }

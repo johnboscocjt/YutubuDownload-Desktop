@@ -60,7 +60,11 @@ export async function GET(req: NextRequest) {
 
   // Serve .deb directly from this site (attachment download starts immediately)
   if (platform === "linux" && match.url.includes("/api/download")) {
-    await incrementDownload(platform);
+    try {
+      await incrementDownload(platform);
+    } catch (err) {
+      console.error("download stats increment failed:", err);
+    }
     return serveLocalDeb();
   }
 
@@ -74,7 +78,11 @@ export async function GET(req: NextRequest) {
     url.includes("github.com") && url.includes("/releases/download/");
 
   if (!isGithubReleaseAsset) {
-    await incrementDownload(platform);
+    try {
+      await incrementDownload(platform);
+    } catch (err) {
+      console.error("download stats increment failed:", err);
+    }
   }
 
   return NextResponse.redirect(url, 302);
