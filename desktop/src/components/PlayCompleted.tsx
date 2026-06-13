@@ -425,23 +425,22 @@ export default function PlayCompleted({
         bounds: { ...bounds, visible: true },
       });
       setError("");
+      lastBoundsRef.current = null;
+      lastBoundsKeyRef.current = "";
+      const reveal = async () => {
+        const b = getPlayerBounds();
+        if (!b?.visible) return false;
+        await updateNativePlayerBounds({ bounds: b });
+        await nativePlayerControl("fitWindow");
+        setNativeActive(true);
+        return true;
+      };
+      if (await reveal()) return "ok";
       window.setTimeout(() => {
-        const applyBounds = async () => {
-          const b = getPlayerBounds();
-          if (b?.visible) {
-            await updateNativePlayerBounds({ bounds: b });
-            setNativeActive(true);
-            return;
-          }
-          window.setTimeout(async () => {
-            const retry = getPlayerBounds();
-            if (retry?.visible) {
-              await updateNativePlayerBounds({ bounds: retry });
-              setNativeActive(true);
-            }
-          }, 250);
-        };
-        void applyBounds();
+        void (async () => {
+          if (await reveal()) return;
+          window.setTimeout(() => void reveal(), 250);
+        })();
       }, 120);
       return "ok";
     } catch (e) {
@@ -479,6 +478,23 @@ export default function PlayCompleted({
     },
     [nativeActive, playerMode, getPlayerBounds, cinemaMode]
   );
+
+  const forceRevealEmbed = useCallback(async () => {
+    if (!nativeActiveRef.current || playerModeRef.current !== "embed") return;
+    lastBoundsRef.current = null;
+    lastBoundsKeyRef.current = "";
+    const bounds = getPlayerBounds();
+    if (!bounds?.visible) return;
+    try {
+      await updateNativePlayerBounds({ bounds: { ...bounds, visible: true } });
+      await nativePlayerControl("fitWindow");
+      if (cinemaModeRef.current) {
+        await nativePlayerControl("fillFrame");
+      }
+    } catch {
+      // ignore reveal glitches
+    }
+  }, [getPlayerBounds]);
 
   const scheduleCinemaBoundsSync = useCallback(
     (applyFill = false) => {
@@ -678,14 +694,7 @@ export default function PlayCompleted({
       lastBoundsRef.current = null;
       lastBoundsKeyRef.current = "";
       if (nativeActive) {
-        const b = getPlayerBounds();
-        if (b?.visible) {
-          void updateNativePlayerBounds({ bounds: b }).then(() => {
-            if (cinemaModeRef.current) void nativePlayerControl("fillFrame");
-          });
-        } else {
-          void syncNativeBounds({ applyFill: cinemaModeRef.current });
-        }
+        void forceRevealEmbed();
         return;
       }
       const wrap = playerWrapRef.current;
@@ -700,7 +709,7 @@ export default function PlayCompleted({
     return () => {
       cancelled = true;
     };
-  }, [panelVisible, nativeActive, playerMode, current, syncNativeBounds, startNative, getPlayerBounds]);
+  }, [panelVisible, nativeActive, playerMode, current, syncNativeBounds, startNative, forceRevealEmbed]);
 
   const wakeControls = useCallback(
     (force = false) => {
@@ -739,6 +748,18 @@ export default function PlayCompleted({
       return next;
     });
   }, [scheduleControlsIdle, setControlsActive]);
+
+  const handlePlayerDoubleClick = useCallback(() => {
+    if (!current || current.isAudio) return;
+    if (playerMode === "embed" && !nativeActive) return;
+    wakeControls(true);
+    toggleCinema();
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        void forceRevealEmbed();
+      });
+    });
+  }, [current, playerMode, nativeActive, wakeControls, toggleCinema, forceRevealEmbed]);
 
   const showVolumeHud = useCallback(() => {
     setVolumeHudVisible(true);
@@ -923,19 +944,45 @@ export default function PlayCompleted({
     const t = window.setTimeout(() => {
       window.requestAnimationFrame(() => {
         void syncNativeBounds({ applyFill: cinemaMode });
+        void forceRevealEmbed();
       });
     }, cinemaMode ? 300 : 200);
 
     return () => window.clearTimeout(t);
-  }, [cinemaMode, nativeActive, playerMode, syncNativeBounds]);
+  }, [cinemaMode, nativeActive, playerMode, syncNativeBounds, forceRevealEmbed]);
 
   useEffect(() => {
-    if (!nativeActive || !cinemaMode || playerMode !== "embed") {
+    if (!nativeActive || playerMode !== "embed" || !current || current.isAudio) return;
+
+    let unlisten: (() => void) | undefined;
+    void listen("player-double-click", () => {
+      handlePlayerDoubleClick();
+    }).then((fn) => {
+      unlisten = fn;
+    });
+
+    return () => {
+      unlisten?.();
+    };
+  }, [nativeActive, playerMode, current, handlePlayerDoubleClick]);
+
+  useEffect(() => {
+    if (!nativeActive || playerMode !== "embed") {
       void setCinemaPointerWatch(false);
       return;
     }
 
     void setCinemaPointerWatch(true);
+    return () => {
+      void setCinemaPointerWatch(false);
+    };
+  }, [nativeActive, playerMode]);
+
+  useEffect(() => {
+    if (!nativeActive || !cinemaMode || playerMode !== "embed") {
+      return;
+    }
+
     let unlisten: (() => void) | undefined;
 
     void listen<PointerInWindow>("cinema-pointer", () => {
@@ -950,7 +997,6 @@ export default function PlayCompleted({
     });
 
     return () => {
-      void setCinemaPointerWatch(false);
       unlisten?.();
     };
   }, [
@@ -1101,6 +1147,7 @@ export default function PlayCompleted({
                 nativeActive ? " player-wrap--active" : ""
               }`}
               ref={playerWrapRef}
+              onDoubleClick={handlePlayerDoubleClick}
               style={
                 cinemaMode
                   ? ({ ["--cinema-toolbar-h" as string]: `${cinemaToolbarH}px` } as CSSProperties)
@@ -1239,7 +1286,11 @@ export default function PlayCompleted({
                     <button
                       type="button"
                       className="player-ctrl-icon player-ctrl-icon--side"
-                      title={cinemaMode ? "Exit fullscreen (Esc)" : "Fullscreen (F)"}
+                      title={
+                        cinemaMode
+                          ? "Exit fullscreen (Esc or double-click)"
+                          : "Fullscreen (F or double-click)"
+                      }
                       aria-label={cinemaMode ? "Exit fullscreen" : "Fullscreen"}
                       onClick={() => toggleCinema()}
                     >
@@ -1249,8 +1300,8 @@ export default function PlayCompleted({
                 </div>
                 <p className="player-controls-hint">
                   {cinemaMode
-                    ? "Space · ←/→ seek · Esc exit · M mute"
-                    : "Space pause · ←/→ seek · ↑/↓ volume · F expand · M mute"}
+                    ? "Space · ←/→ seek · Esc or double-click exit · M mute"
+                    : "Space pause · ←/→ seek · ↑/↓ volume · F or double-click expand · M mute"}
                 </p>
               </div>
             )}

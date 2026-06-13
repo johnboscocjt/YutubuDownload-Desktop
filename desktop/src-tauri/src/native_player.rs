@@ -19,6 +19,12 @@ static CINEMA_PTR_SOURCE: Mutex<Option<gtk::glib::SourceId>> = Mutex::new(None);
 static CINEMA_LAST_PTR: Mutex<Option<(i32, i32)>> = Mutex::new(None);
 
 #[cfg(target_os = "linux")]
+static PTR_BTN1_DOWN: Mutex<bool> = Mutex::new(false);
+
+#[cfg(target_os = "linux")]
+static PTR_LAST_CLICK_END: Mutex<Option<(std::time::Instant, i32, i32)>> = Mutex::new(None);
+
+#[cfg(target_os = "linux")]
 static LAST_PLAYER_BOUNDS: Mutex<Option<NativePlayerBounds>> = Mutex::new(None);
 
 /// Logical pixels relative to the webview viewport (from getBoundingClientRect).
@@ -245,6 +251,7 @@ fn place_embed_surface(
     embed_gdk.resize(w, h);
     if visible {
         embed_gdk.show();
+        embed_gdk.raise();
     }
     Ok(())
 }
@@ -333,8 +340,10 @@ fn show_embed_window(embed: &gtk::Window, embed_gdk: &gdk::Window, bounds: &Nati
     embed.resize(bounds.width.max(1), bounds.height.max(1));
     place_embed_surface(embed_gdk, &parent_gdk, bounds, bounds.visible)?;
     if bounds.visible {
+        embed.set_keep_above(true);
         embed.set_visible(true);
         embed.show_all();
+        embed_gdk.raise();
     } else {
         embed.set_visible(false);
     }
@@ -638,6 +647,7 @@ pub async fn update_native_player_bounds(
 
         {
             let mut guard = LAST_PLAYER_BOUNDS.lock().map_err(|e| e.to_string())?;
+            let was_hidden = guard.as_ref().is_none_or(|prev| !prev.visible);
             if guard
                 .as_ref()
                 .is_some_and(|prev| bounds_unchanged(prev, &bounds))
@@ -645,12 +655,19 @@ pub async fn update_native_player_bounds(
                 return Ok(());
             }
             *guard = Some(bounds.clone());
-        }
 
-        let win = window.clone();
-        let bounds_clone = bounds.clone();
-        run_on_main(&win.clone(), move || reposition_child_embed(&win, &bounds_clone))?;
-        Ok(())
+            let win = window.clone();
+            let bounds_clone = bounds.clone();
+            let reveal = bounds.visible && was_hidden;
+            run_on_main(&win.clone(), move || reposition_child_embed(&win, &bounds_clone))?;
+            if bounds.visible {
+                let _ = send_mpv_ipc("fitWindow");
+                if reveal {
+                    refresh_mpv_surface();
+                }
+            }
+            return Ok(());
+        }
     }
 }
 
@@ -715,6 +732,103 @@ fn read_pointer_in_window(window: &WebviewWindow) -> Result<Option<PointerInWind
 }
 
 #[cfg(target_os = "linux")]
+fn read_pointer_button1(window: &WebviewWindow) -> Result<Option<(i32, i32, bool)>, String> {
+    use gdk::prelude::{DeviceExt, SeatExt};
+    use gtk::prelude::WidgetExt;
+
+    let gtk_win = window
+        .gtk_window()
+        .map_err(|e| format!("Could not access GTK window: {e}"))?;
+    let gdk_win = gtk_win
+        .window()
+        .ok_or_else(|| "Could not access GDK window.".to_string())?;
+
+    let display = gdk_win.display();
+    let seat = display
+        .default_seat()
+        .ok_or_else(|| "Could not access input seat.".to_string())?;
+    let device = seat
+        .pointer()
+        .ok_or_else(|| "Could not read pointer device.".to_string())?;
+
+    let width = gdk_win.width() as i32;
+    let height = gdk_win.height() as i32;
+
+    let (win_at, x, y, _modifiers) = gdk_win.device_position_double(&device);
+    let (x, y) = if win_at.is_some() {
+        (x.round() as i32, y.round() as i32)
+    } else {
+        let (_screen, root_x, root_y) = device.position_double();
+        let (win_x, win_y, _) = gdk_win.origin();
+        (root_x.round() as i32 - win_x, root_y.round() as i32 - win_y)
+    };
+
+    if x < 0 || y < 0 || x >= width || y >= height {
+        return Ok(None);
+    }
+
+    let screen = display.default_screen();
+    let root = screen
+        .root_window()
+        .ok_or_else(|| "Could not access root window.".to_string())?;
+    let (_root_win, _rx, _ry, mask) = root.device_position_double(&device);
+    let btn1 = mask.contains(gdk::ModifierType::BUTTON1_MASK);
+
+    Ok(Some((x, y, btn1)))
+}
+
+#[cfg(target_os = "linux")]
+fn pointer_in_player_bounds(x: i32, y: i32) -> bool {
+    let Ok(guard) = LAST_PLAYER_BOUNDS.lock() else {
+        return false;
+    };
+    let Some(bounds) = guard.as_ref() else {
+        return false;
+    };
+    if !bounds.visible || bounds.width <= 0 || bounds.height <= 0 {
+        return false;
+    }
+    x >= bounds.x
+        && y >= bounds.y
+        && x < bounds.x + bounds.width
+        && y < bounds.y + bounds.height
+}
+
+#[cfg(target_os = "linux")]
+fn poll_pointer_double_click(window: &WebviewWindow, x: i32, y: i32, btn1: bool) {
+    let was_down = PTR_BTN1_DOWN.lock().map(|g| *g).unwrap_or(false);
+    if let Ok(mut down) = PTR_BTN1_DOWN.lock() {
+        *down = btn1;
+    }
+
+    if was_down && !btn1 {
+        if !pointer_in_player_bounds(x, y) {
+            if let Ok(mut last) = PTR_LAST_CLICK_END.lock() {
+                *last = None;
+            }
+            return;
+        }
+
+        let now = std::time::Instant::now();
+        let mut emit = false;
+        if let Ok(mut last) = PTR_LAST_CLICK_END.lock() {
+            if let Some((prev, px, py)) = *last {
+                if now.duration_since(prev) <= std::time::Duration::from_millis(450)
+                    && (x - px).abs() <= 18
+                    && (y - py).abs() <= 18
+                {
+                    emit = true;
+                }
+            }
+            *last = Some((now, x, y));
+        }
+        if emit {
+            let _ = window.emit("player-double-click", ());
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
 fn stop_cinema_pointer_watch() {
     if let Ok(mut guard) = CINEMA_PTR_SOURCE.lock() {
         if let Some(id) = guard.take() {
@@ -723,6 +837,12 @@ fn stop_cinema_pointer_watch() {
     }
     if let Ok(mut last) = CINEMA_LAST_PTR.lock() {
         *last = None;
+    }
+    if let Ok(mut down) = PTR_BTN1_DOWN.lock() {
+        *down = false;
+    }
+    if let Ok(mut click) = PTR_LAST_CLICK_END.lock() {
+        *click = None;
     }
 }
 
@@ -760,18 +880,25 @@ pub fn set_cinema_pointer_watch(window: WebviewWindow, enabled: bool) -> Result<
 
             let emit_win = window.clone();
             let source_id = gtk::glib::timeout_add_local(std::time::Duration::from_millis(40), move || {
-                if let Ok(Some(pos)) = read_pointer_in_window(&emit_win) {
+                if let Ok(Some((x, y, btn1))) = read_pointer_button1(&emit_win) {
+                    poll_pointer_double_click(&emit_win, x, y, btn1);
+
                     let changed = if let Ok(mut last) = CINEMA_LAST_PTR.lock() {
                         let changed = last
-                            .map(|(lx, ly)| lx != pos.x || ly != pos.y)
+                            .map(|(lx, ly)| lx != x || ly != y)
                             .unwrap_or(false);
-                        *last = Some((pos.x, pos.y));
+                        *last = Some((x, y));
                         changed
                     } else {
                         false
                     };
                     if changed {
-                        let _ = emit_win.emit("cinema-pointer", &pos);
+                        let _ = emit_win.emit("cinema-pointer", &PointerInWindow {
+                            x,
+                            y,
+                            width: 0,
+                            height: 0,
+                        });
                     }
                 }
                 gtk::glib::ControlFlow::Continue
