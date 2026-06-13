@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "npm run copy-screenshots && vite",
     "build": "npm run copy-screenshots && tsc && vite build",
-    "copy-screenshots": "mkdir -p src/assets/screenshots/desktop public/screenshots/desktop && cp -f ../Screenshots/desktop/*.png src/assets/screenshots/desktop/ && cp -f ../Screenshots/desktop/*.png public/screenshots/desktop/",
+    "copy-screenshots": "node scripts/copy-screenshots.mjs",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:linux": "GDK_BACKEND=x11 dbus-run-session -- tauri",
