@@ -141,7 +141,12 @@ These files work together to give you a seamless, Tanzania-optimized YouTube dow
 - ✅ **v2.0.1**: Multi-instance safe downloads with shared cookie store and probe-based quality resolver
 - 🎯 **Purpose**: Run this to download — it's the heart of the tool
 
-### 5. `install.sh` — **The Silent Installer**
+### 5. `desktop/` — **Tauri Desktop App (v2.0.1)**
+- 🖥️ Cross-platform GUI (Linux, Windows, macOS)
+- ⚙️ Uses `crates/ytd-core` Rust library (same quality probe + download logic as terminal)
+- 🎯 **Purpose**: Download without the terminal; see `desktop/README.md`
+
+### 6. `install.sh` — **The Silent Installer**
 - 🔌 Installs **all dependencies**: `yt-dlp`, `ffmpeg`, `deno`, Python venv with `secretstorage` + `cryptography`
 - 📂 Sets up `~/youtubedownloading/yt-venv` for cookie decryption
 - 📥 Downloads and installs `YutubuDownload` to `/usr/local/bin/`

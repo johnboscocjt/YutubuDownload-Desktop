@@ -98,6 +98,19 @@ else
     echo "   ✅ All system dependencies already installed"
 fi
 
+if is_installed mpv; then
+    echo "   ✅ mpv already installed (instant in-app video playback)"
+else
+    echo "   ⬇️  Installing mpv for instant video playback..."
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq mpv > /dev/null 2>&1 || true
+    if is_installed mpv; then
+        echo "   ✅ mpv installed"
+    else
+        echo "   ⚠️  mpv not installed — video will use slower WebKit fallback"
+        echo "      Install later: sudo apt install mpv"
+    fi
+fi
+
 # STEP 2: yt-dlp (always refresh — YouTube breaks stale builds often)
 echo ""
 echo "📦 STEP 2/5: Checking yt-dlp..."
@@ -237,6 +250,30 @@ else
     echo "      sudo ln -sf /usr/local/bin/YutubuDownload /usr/local/bin/ytd"
     exit 1
 fi
+
+# Optional: install D-Bus launcher wrapper and desktop entry for GUI launchers
+echo ""
+print_loading "   🔧 Installing desktop launcher and D-Bus wrapper"
+if [ -f "$INSTALLER_DIR/desktop/launch-with-dbus.sh" ]; then
+    cp "$INSTALLER_DIR/desktop/launch-with-dbus.sh" /usr/local/bin/yutubu-launch
+    chmod a+rx /usr/local/bin/yutubu-launch
+    echo "   ✅ Installed D-Bus launcher: /usr/local/bin/yutubu-launch"
+else
+    echo "   ⚠️  D-Bus launcher script not found in repo (skipping)"
+fi
+
+if [ -f "$INSTALLER_DIR/desktop/yutubu-download.desktop.template" ]; then
+    # Prepare desktop file and set Exec to use installed binary via the wrapper
+    DESKTOP_OUT="/usr/share/applications/yutubu-download.desktop"
+    sed "s|Exec=.*|Exec=/usr/local/bin/yutubu-launch /usr/local/bin/YutubuDownload %U|" \
+        "$INSTALLER_DIR/desktop/yutubu-download.desktop.template" > /tmp/yutubu-download.desktop
+    mv /tmp/yutubu-download.desktop "$DESKTOP_OUT"
+    chmod a+r "$DESKTOP_OUT"
+    echo "   ✅ Installed desktop entry: $DESKTOP_OUT"
+else
+    echo "   ⚠️  Desktop template not found in repo (skipping)"
+fi
+
 
 # === COMPLETION MESSAGE ===
 echo ""

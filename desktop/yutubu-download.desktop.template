@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=YutubuDownload
+Comment=Youtube downloader with in-app playback (wrapped with D-Bus session)
+Exec=dbus-run-session -- /usr/local/bin/yutubu-download %U
+Icon=yutubu-download
+Type=Application
+Categories=AudioVideo;Network;Utility;
+StartupWMClass=YutubuDownload
+Terminal=false
+
+# If you install the packaged binary elsewhere, update Exec accordingly:
+# Exec=dbus-run-session -- /path/to/yutubu-download %U
