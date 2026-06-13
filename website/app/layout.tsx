@@ -2,7 +2,12 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { APP } from "@/lib/config";
 
+const siteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ??
+  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://ytddesktop.vercel.app");
+
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: `${APP.name} — ${APP.tagline}`,
   description:
     "Download YouTube videos, playlists, and MP3 with probe-verified quality. Linux .deb desktop app plus terminal installer.",
