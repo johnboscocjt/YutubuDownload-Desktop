@@ -25,6 +25,12 @@ export const APP = {
     /** Start menu / Apps & Features name */
     appMenuName: "YutubuDownload",
   },
+  /** Site-hosted macOS universal .dmg (Apple Silicon + Intel) */
+  macosDmg: {
+    filename: "YutubuDownload_2.0.1_universal.dmg",
+    publicPath: "/downloads/YutubuDownload_2.0.1_universal.dmg",
+    appName: "YutubuDownload",
+  },
 } as const;
 
 export type Platform = "linux" | "windows" | "macos" | "terminal";
@@ -64,11 +70,10 @@ export const PLATFORMS: PlatformInfo[] = [
     id: "macos",
     label: "macOS",
     icon: "🍎",
-    description: "Universal .dmg for Apple Silicon and Intel — in development.",
+    description: "Universal .dmg for Apple Silicon and Intel Macs.",
     formats: [".dmg"],
-    assetHints: ["macos", "darwin", ".dmg", "apple"],
-    fallbackUrl: "",
-    comingSoon: true,
+    assetHints: ["macos", "darwin", ".dmg", "apple", "universal"],
+    fallbackUrl: `https://github.com/${APP.repo}/releases/latest`,
   },
   {
     id: "terminal",

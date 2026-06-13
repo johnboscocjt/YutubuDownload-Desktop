@@ -23,6 +23,7 @@ export default function HeroSection() {
     const ua = navigator.userAgent.toLowerCase();
     const platform = navigator.platform?.toLowerCase() ?? "";
     if (ua.includes("win") || platform.includes("win")) setPrimaryPlatform("windows");
+    else if (ua.includes("mac") || platform.includes("mac")) setPrimaryPlatform("macos");
     else if (ua.includes("linux") || platform.includes("linux")) setPrimaryPlatform("linux");
   }, []);
 

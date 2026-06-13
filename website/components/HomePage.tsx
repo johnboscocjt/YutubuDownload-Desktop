@@ -8,6 +8,7 @@ import StepsSection from "./StepsSection";
 import DownloadSection from "./DownloadSection";
 import LinuxInstallGuide from "./LinuxInstallGuide";
 import WindowsInstallGuide from "./WindowsInstallGuide";
+import MacInstallGuide from "./MacInstallGuide";
 import AppIcon from "./AppIcon";
 import { IconGithub } from "./svg/Icons";
 
@@ -26,6 +27,7 @@ export default function HomePage() {
         <div id="install-guides">
           <LinuxInstallGuide />
           <WindowsInstallGuide />
+          <MacInstallGuide />
         </div>
       </main>
 
@@ -49,6 +51,7 @@ export default function HomePage() {
             </a>
             <a href="#linux-install">Linux install</a>
             <a href="#windows-install">Windows install</a>
+            <a href="#macos-install">macOS install</a>
             <a href={`https://github.com/${APP.terminalRepo}/blob/main/TROUBLESHOOTING.md`}>
               Troubleshooting
             </a>

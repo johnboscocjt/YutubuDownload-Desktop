@@ -25,6 +25,7 @@ function downloadButtonLabel(platform: Platform): string {
 function downloadFilename(platform: Platform): string | undefined {
   if (platform === "linux") return APP.linuxDeb.filename;
   if (platform === "windows") return APP.windowsInstaller.filename;
+  if (platform === "macos") return APP.macosDmg.filename;
   return undefined;
 }
 function detectPlatform(): Platform | null {
@@ -59,8 +60,8 @@ export default function DownloadSection() {
             <span className="section-tag">Get started</span>
             <h2>Download for your platform</h2>
             <p>
-              Version {data?.version ?? APP.releaseTag} — Linux (.deb) and Windows (.exe)
-              installers available. macOS build coming soon.
+              Version {data?.version ?? APP.releaseTag} — Linux (.deb), Windows (.exe),
+              and macOS (.dmg) installers available.
             </p>
           </div>
         </Reveal>

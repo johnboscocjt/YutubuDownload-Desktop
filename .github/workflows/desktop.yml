@@ -77,6 +77,34 @@ jobs:
           path: website/public/downloads/*.deb
           if-no-files-found: error
 
+  tauri-macos:
+    needs: [rust-core, frontend]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+      - name: Add Rust targets for universal macOS build
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci
+        working-directory: desktop
+      - run: npm run tauri build -- --target universal-apple-darwin
+        working-directory: desktop
+      - name: Stage macOS installer
+        run: |
+          mkdir -p website/public/downloads
+          DMG=$(ls target/release/bundle/dmg/*.dmg | head -1)
+          cp "$DMG" website/public/downloads/YutubuDownload_2.0.1_universal.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: website/public/downloads/YutubuDownload_2.0.1_universal.dmg
+          if-no-files-found: error
+
   tauri-windows:
     needs: [rust-core, frontend]
     runs-on: windows-latest
@@ -107,7 +135,7 @@ jobs:
           if-no-files-found: error
 
   publish-installers:
-    needs: [tauri-linux, tauri-windows]
+    needs: [tauri-linux, tauri-windows, tauri-macos]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
@@ -124,6 +152,7 @@ jobs:
           mkdir -p website/public/downloads
           cp artifacts/linux-deb/*.deb website/public/downloads/
           cp artifacts/windows-exe/YutubuDownload_2.0.1_x64-setup.exe website/public/downloads/
+          cp artifacts/macos-dmg/YutubuDownload_2.0.1_universal.dmg website/public/downloads/
           ls -lh website/public/downloads/
       - name: Commit website installers
         run: |
@@ -134,5 +163,5 @@ jobs:
             echo "No installer changes to commit."
             exit 0
           fi
-          git commit -m "Update website desktop installers (.deb + Windows .exe)."
+          git commit -m "Update website desktop installers (.deb, Windows .exe, macOS .dmg)."
           git push

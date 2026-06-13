@@ -52,6 +52,16 @@ function matchWindowsAsset(assets: GitHubAsset[]): GitHubAsset | null {
   return assets.find((a) => a.name.toLowerCase().endsWith(".exe")) ?? null;
 }
 
+/** Prefer universal .dmg, then any macOS .dmg. */
+function matchMacosAsset(assets: GitHubAsset[]): GitHubAsset | null {
+  const universal = assets.find((a) => {
+    const n = a.name.toLowerCase();
+    return n.endsWith(".dmg") && n.includes("universal");
+  });
+  if (universal) return universal;
+  return assets.find((a) => a.name.toLowerCase().endsWith(".dmg")) ?? null;
+}
+
 export async function fetchLatestRelease(): Promise<GitHubRelease | null> {
   const res = await fetch(
     `https://api.github.com/repos/${APP.repo}/releases/latest`,
@@ -110,7 +120,9 @@ export async function resolveDownloads(): Promise<ResolvedDownload[]> {
         ? matchLinuxAsset(assets)
         : p.id === "windows"
           ? matchWindowsAsset(assets)
-          : matchAsset(assets, p.assetHints);
+          : p.id === "macos"
+            ? matchMacosAsset(assets)
+            : matchAsset(assets, p.assetHints);
 
     // Site-hosted .deb when GitHub Release is not published yet
     if (p.id === "linux" && !asset) {
@@ -132,6 +144,19 @@ export async function resolveDownloads(): Promise<ResolvedDownload[]> {
         label: p.label,
         url: `/api/download?platform=windows`,
         filename: APP.windowsInstaller.filename,
+        available: true,
+        comingSoon: false,
+        githubCount: 0,
+      };
+    }
+
+    // Site-hosted macOS .dmg when GitHub Release has no .dmg yet
+    if (p.id === "macos" && !asset) {
+      return {
+        platform: p.id,
+        label: p.label,
+        url: `/api/download?platform=macos`,
+        filename: APP.macosDmg.filename,
         available: true,
         comingSoon: false,
         githubCount: 0,
