@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { APP } from "@/lib/config";
+import type { Platform } from "@/lib/config";
 import HeroBackground from "./svg/HeroBackground";
 import StatsCounter from "./StatsCounter";
 import ImageLightbox from "./ImageLightbox";
@@ -15,6 +16,15 @@ const HERO_SHOT = {
 
 export default function HeroSection() {
   const [lightbox, setLightbox] = useState(false);
+  const [primaryPlatform, setPrimaryPlatform] = useState<Platform>("linux");
+
+  useEffect(() => {
+    if (typeof navigator === "undefined") return;
+    const ua = navigator.userAgent.toLowerCase();
+    const platform = navigator.platform?.toLowerCase() ?? "";
+    if (ua.includes("win") || platform.includes("win")) setPrimaryPlatform("windows");
+    else if (ua.includes("linux") || platform.includes("linux")) setPrimaryPlatform("linux");
+  }, []);
 
   return (
     <section className="hero">
@@ -38,7 +48,7 @@ export default function HeroSection() {
           </p>
 
           <div className="hero-actions">
-            <a className="btn btn-primary btn-glow" href="/api/download?platform=linux">
+            <a className="btn btn-primary btn-glow" href={`/api/download?platform=${primaryPlatform}`}>
               Download free
               <IconArrowRight />
             </a>

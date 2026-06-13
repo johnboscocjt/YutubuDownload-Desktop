@@ -18,6 +18,11 @@ export const APP = {
     /** Application menu name after install */
     appMenuName: "YutubuDownload",
   },
+  /** Site-hosted Windows NSIS installer */
+  windowsInstaller: {
+    filename: "YutubuDownload_2.0.1_x64-setup.exe",
+    publicPath: "/downloads/YutubuDownload_2.0.1_x64-setup.exe",
+  },
 } as const;
 
 export type Platform = "linux" | "windows" | "macos" | "terminal";
@@ -48,11 +53,10 @@ export const PLATFORMS: PlatformInfo[] = [
     id: "windows",
     label: "Windows",
     icon: "🪟",
-    description: "Desktop installer for Windows 10/11 — in development.",
+    description: "Desktop installer for Windows 10/11 (64-bit).",
     formats: [".exe"],
-    assetHints: ["windows", "win", ".exe", ".msi", "nsis"],
-    fallbackUrl: "",
-    comingSoon: true,
+    assetHints: ["windows", "win", ".exe", ".msi", "nsis", "setup"],
+    fallbackUrl: `https://github.com/${APP.repo}/releases/latest`,
   },
   {
     id: "macos",

@@ -42,6 +42,16 @@ function matchLinuxAsset(assets: GitHubAsset[]): GitHubAsset | null {
   return matchAsset(assets, [".deb", "linux", "appimage"]);
 }
 
+/** Prefer NSIS setup .exe when multiple Windows assets exist. */
+function matchWindowsAsset(assets: GitHubAsset[]): GitHubAsset | null {
+  const setup = assets.find((a) => {
+    const n = a.name.toLowerCase();
+    return n.endsWith(".exe") && (n.includes("setup") || n.includes("nsis") || n.includes("x64"));
+  });
+  if (setup) return setup;
+  return assets.find((a) => a.name.toLowerCase().endsWith(".exe")) ?? null;
+}
+
 export async function fetchLatestRelease(): Promise<GitHubRelease | null> {
   const res = await fetch(
     `https://api.github.com/repos/${APP.repo}/releases/latest`,
@@ -98,7 +108,9 @@ export async function resolveDownloads(): Promise<ResolvedDownload[]> {
     const asset =
       p.id === "linux"
         ? matchLinuxAsset(assets)
-        : matchAsset(assets, p.assetHints);
+        : p.id === "windows"
+          ? matchWindowsAsset(assets)
+          : matchAsset(assets, p.assetHints);
 
     // Site-hosted .deb when GitHub Release is not published yet
     if (p.id === "linux" && !asset) {
@@ -107,6 +119,19 @@ export async function resolveDownloads(): Promise<ResolvedDownload[]> {
         label: p.label,
         url: `/api/download?platform=linux`,
         filename: APP.linuxDeb.filename,
+        available: true,
+        comingSoon: false,
+        githubCount: 0,
+      };
+    }
+
+    // Site-hosted Windows installer when GitHub Release has no .exe yet
+    if (p.id === "windows" && !asset) {
+      return {
+        platform: p.id,
+        label: p.label,
+        url: `/api/download?platform=windows`,
+        filename: APP.windowsInstaller.filename,
         available: true,
         comingSoon: false,
         githubCount: 0,

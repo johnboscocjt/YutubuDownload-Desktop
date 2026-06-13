@@ -2,7 +2,7 @@
 
 Cross-platform desktop app for YutubuDownload v2.0.1. Uses the shared Rust core (`crates/ytd-core`) for quality probing, cookies, and yt-dlp orchestration.
 
-**Linux:** `.deb` installer available · **Windows / macOS:** coming soon
+**Linux:** `.deb` installer · **Windows:** `.exe` (NSIS) · **macOS:** coming soon
 
 ## Prerequisites
 
@@ -16,10 +16,14 @@ Cross-platform desktop app for YutubuDownload v2.0.1. Uses the shared Rust core 
 ```bash
 cd desktop
 npm install
-npm run tauri dev
+npm run tauri:dev
 ```
 
-## Build Linux `.deb`
+Use `npm run tauri:linux -- dev` on Linux if you need the GTK/D-Bus launcher wrapper.
+
+## Build installers
+
+### Linux `.deb` (on Ubuntu/Debian)
 
 ```bash
 cd desktop
@@ -32,6 +36,22 @@ Artifacts:
 | Output | Path |
 |--------|------|
 | `.deb` package | `target/release/bundle/deb/` (workspace root) |
+
+### Windows `.exe` (on Windows 10/11)
+
+Requires [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/) (preinstalled on Windows 11).
+
+```bash
+cd desktop
+npm install
+npm run tauri build
+```
+
+| Output | Path |
+|--------|------|
+| NSIS setup `.exe` | `target/release/bundle/nsis/` |
+
+GitHub Actions also builds both installers on every push to `main` and publishes them to `website/public/downloads/`.
 
 Install the `.deb`:
 

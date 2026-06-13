@@ -15,6 +15,18 @@ interface ReleasePayload {
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
+function downloadButtonLabel(platform: Platform): string {
+  if (platform === "linux") return "Download .deb";
+  if (platform === "windows") return "Download .exe";
+  if (platform === "macos") return "Download .dmg";
+  return "Download";
+}
+
+function downloadFilename(platform: Platform): string | undefined {
+  if (platform === "linux") return APP.linuxDeb.filename;
+  if (platform === "windows") return APP.windowsInstaller.filename;
+  return undefined;
+}
 function detectPlatform(): Platform | null {
   if (typeof navigator === "undefined") return null;
   const ua = navigator.userAgent.toLowerCase();
@@ -47,8 +59,8 @@ export default function DownloadSection() {
             <span className="section-tag">Get started</span>
             <h2>Download for your platform</h2>
             <p>
-              Version {data?.version ?? APP.releaseTag} — Linux desktop (.deb) is
-              available now. Windows and macOS builds are coming soon.
+              Version {data?.version ?? APP.releaseTag} — Linux (.deb) and Windows (.exe)
+              installers available. macOS build coming soon.
             </p>
           </div>
         </Reveal>
@@ -108,9 +120,9 @@ export default function DownloadSection() {
                   <a
                     className="btn btn-primary btn-block"
                     href={`/api/download?platform=${p.id}`}
-                    download={p.id === "linux" ? APP.linuxDeb.filename : undefined}
+                    download={downloadFilename(p.id)}
                   >
-                    Download .deb
+                    {downloadButtonLabel(p.id)}
                     <IconArrowRight />
                   </a>
                   ) : (

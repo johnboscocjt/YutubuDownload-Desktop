@@ -8,9 +8,11 @@
     "build": "npm run copy-screenshots && tsc && vite build",
     "copy-screenshots": "mkdir -p src/assets/screenshots/desktop public/screenshots/desktop && cp -f ../Screenshots/desktop/*.png src/assets/screenshots/desktop/ && cp -f ../Screenshots/desktop/*.png public/screenshots/desktop/",
     "preview": "vite preview",
-    "tauri": "GDK_BACKEND=x11 dbus-run-session -- tauri",
-    "tauri:dev": "npm run tauri -- dev",
-    "tauri:dev:dbus": "npm run tauri -- dev"
+    "tauri": "tauri",
+    "tauri:linux": "GDK_BACKEND=x11 dbus-run-session -- tauri",
+    "tauri:dev": "npm run tauri:linux -- dev",
+    "tauri:dev:dbus": "npm run tauri:linux -- dev",
+    "tauri:build": "npm run build && tauri build"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.4.0",

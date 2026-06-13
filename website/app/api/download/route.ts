@@ -34,6 +34,36 @@ async function serveLocalDeb(): Promise<NextResponse> {
   }
 }
 
+async function serveLocalWindowsExe(): Promise<NextResponse> {
+  const filePath = path.join(
+    process.cwd(),
+    "public",
+    "downloads",
+    APP.windowsInstaller.filename
+  );
+
+  try {
+    const buffer = await readFile(filePath);
+    return new NextResponse(buffer, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/vnd.microsoft.portable-executable",
+        "Content-Disposition": `attachment; filename="${APP.windowsInstaller.filename}"`,
+        "Content-Length": String(buffer.byteLength),
+        "Cache-Control": "public, max-age=3600",
+      },
+    });
+  } catch {
+    return NextResponse.json(
+      {
+        error:
+          "Windows installer not found on server. Build on Windows or wait for GitHub Actions desktop CI.",
+      },
+      { status: 404 }
+    );
+  }
+}
+
 export async function GET(req: NextRequest) {
   const platform = req.nextUrl.searchParams.get("platform") as Platform | null;
   if (!platform || !VALID.includes(platform)) {
@@ -66,6 +96,15 @@ export async function GET(req: NextRequest) {
       console.error("download stats increment failed:", err);
     }
     return serveLocalDeb();
+  }
+
+  if (platform === "windows" && match.url.includes("/api/download")) {
+    try {
+      await incrementDownload(platform);
+    } catch (err) {
+      console.error("download stats increment failed:", err);
+    }
+    return serveLocalWindowsExe();
   }
 
   const url = match.url || info?.fallbackUrl;

@@ -6,6 +6,8 @@ on:
     paths:
       - "desktop/**"
       - "crates/**"
+      - "website/lib/**"
+      - "website/app/api/download/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - "rust-toolchain.toml"
@@ -17,6 +19,7 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "rust-toolchain.toml"
+  workflow_dispatch:
 
 jobs:
   rust-core:
@@ -64,3 +67,72 @@ jobs:
         working-directory: desktop
       - run: npm run tauri build
         working-directory: desktop
+      - name: Stage Linux installer
+        run: |
+          mkdir -p website/public/downloads
+          cp target/release/bundle/deb/*.deb website/public/downloads/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-deb
+          path: website/public/downloads/*.deb
+          if-no-files-found: error
+
+  tauri-windows:
+    needs: [rust-core, frontend]
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci
+        working-directory: desktop
+      - run: npm run tauri build
+        working-directory: desktop
+      - name: Stage Windows installer
+        run: |
+          mkdir -p website/public/downloads
+          EXE=$(ls target/release/bundle/nsis/*-setup.exe | head -1)
+          cp "$EXE" website/public/downloads/YutubuDownload_2.0.1_x64-setup.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe
+          path: website/public/downloads/YutubuDownload_2.0.1_x64-setup.exe
+          if-no-files-found: error
+
+  publish-installers:
+    needs: [tauri-linux, tauri-windows]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Copy installers into website
+        run: |
+          mkdir -p website/public/downloads
+          cp artifacts/linux-deb/*.deb website/public/downloads/
+          cp artifacts/windows-exe/YutubuDownload_2.0.1_x64-setup.exe website/public/downloads/
+          ls -lh website/public/downloads/
+      - name: Commit website installers
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add website/public/downloads/
+          if git diff --staged --quiet; then
+            echo "No installer changes to commit."
+            exit 0
+          fi
+          git commit -m "Update website desktop installers (.deb + Windows .exe)."
+          git push
