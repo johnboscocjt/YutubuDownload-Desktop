@@ -97,7 +97,8 @@ jobs:
       - name: Stage macOS installer
         run: |
           mkdir -p website/public/downloads
-          DMG=$(ls target/release/bundle/dmg/*.dmg | head -1)
+          DMG=$(find target -path '*/bundle/dmg/*.dmg' -print -quit)
+          test -n "$DMG"
           cp "$DMG" website/public/downloads/YutubuDownload_2.0.1_universal.dmg
       - uses: actions/upload-artifact@v4
         with:
