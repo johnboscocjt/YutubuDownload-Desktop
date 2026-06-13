@@ -28,6 +28,12 @@ function downloadFilename(platform: Platform): string | undefined {
   if (platform === "macos") return APP.macosDmg.filename;
   return undefined;
 }
+
+const INSTALL_GUIDE_HREFS: Partial<Record<Platform, string>> = {
+  linux: "#linux-install",
+  windows: "#windows-install",
+  macos: "#macos-install",
+};
 function detectPlatform(): Platform | null {
   if (typeof navigator === "undefined") return null;
   const ua = navigator.userAgent.toLowerCase();
@@ -61,7 +67,8 @@ export default function DownloadSection() {
             <h2>Download for your platform</h2>
             <p>
               Version {data?.version ?? APP.releaseTag} — Linux (.deb), Windows (.exe),
-              and macOS (.dmg) installers available.
+              and macOS (.dmg) installers available.{" "}
+              <a href="#install-guides">Install &amp; uninstall guides</a> below.
             </p>
           </div>
         </Reveal>
@@ -118,6 +125,7 @@ export default function DownloadSection() {
                       Coming soon
                     </span>
                 ) : available ? (
+                  <>
                   <a
                     className="btn btn-primary btn-block"
                     href={`/api/download?platform=${p.id}`}
@@ -126,6 +134,12 @@ export default function DownloadSection() {
                     {downloadButtonLabel(p.id)}
                     <IconArrowRight />
                   </a>
+                  {INSTALL_GUIDE_HREFS[p.id] && (
+                    <a className="download-guide-link" href={INSTALL_GUIDE_HREFS[p.id]}>
+                      Install &amp; uninstall guide
+                    </a>
+                  )}
+                  </>
                   ) : (
                     <a
                       className="btn btn-ghost btn-block"

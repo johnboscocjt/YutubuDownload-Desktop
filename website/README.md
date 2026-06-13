@@ -6,7 +6,8 @@ Modern landing page for [YutubuDownload Desktop](https://github.com/johnboscocjt
 
 ## Features
 
-- Platform downloads: **Linux** (`.deb`), **Windows** and **macOS** (coming soon), plus **terminal** install script
+- Platform downloads: **Linux** (`.deb`), **Windows** (`.exe`), **macOS** (`.dmg`), plus **terminal** install script
+- Install & uninstall guides for Linux, Windows, and macOS on the landing page
 - Screenshot gallery for all six desktop screens
 - Auto-detects visitor OS and highlights the right download card
 - **Live download counter** (polls every 12s): site-hosted downloads + GitHub Release asset counts (no fake baseline)
@@ -53,9 +54,9 @@ cp ../target/release/bundle/deb/YutubuDownload_*.deb public/downloads/
 
 | Platform | Asset | Website behaviour |
 |----------|-------|-------------------|
-| Linux | `public/downloads/*.deb` or GitHub Release | **Download .deb** starts immediately |
-| Windows | — | Shows **Coming soon** |
-| macOS | — | Shows **Coming soon** |
+| Linux | `public/downloads/*.deb` or GitHub Release | **Download .deb** + [install guide](#linux-install) |
+| Windows | `public/downloads/*-setup.exe` or GitHub Release | **Download .exe** + [install guide](#windows-install) |
+| macOS | `public/downloads/*_universal.dmg` or GitHub Release | **Download .dmg** + [install guide](#macos-install) |
 | Terminal | `install.sh` on terminal repo | Always available |
 
 Screenshots open **full screen** on click (lightbox).
@@ -66,4 +67,6 @@ Screenshots open **full screen** on click (lightbox).
 |-------|---------|
 | `GET /api/stats` | Live download statistics |
 | `GET /api/releases` | Latest release + resolved download URLs |
-| `GET /api/download?platform=linux` | Track click + redirect to `.deb` |
+| `GET /api/download?platform=linux` | Track click + serve `.deb` |
+| `GET /api/download?platform=windows` | Track click + serve `.exe` |
+| `GET /api/download?platform=macos` | Track click + serve `.dmg` |

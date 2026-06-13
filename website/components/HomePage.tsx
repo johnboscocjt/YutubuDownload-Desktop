@@ -25,6 +25,18 @@ export default function HomePage() {
         <StepsSection />
         <DownloadSection />
         <div id="install-guides">
+          <div className="install-guides-intro container">
+            <h2>Install &amp; uninstall guides</h2>
+            <p>
+              Step-by-step setup for Linux, Windows, and macOS — including dependencies,
+              updates, and removal.
+            </p>
+            <nav className="install-guides-nav" aria-label="Platform install guides">
+              <a href="#linux-install">Linux (.deb)</a>
+              <a href="#windows-install">Windows (.exe)</a>
+              <a href="#macos-install">macOS (.dmg)</a>
+            </nav>
+          </div>
           <LinuxInstallGuide />
           <WindowsInstallGuide />
           <MacInstallGuide />

@@ -1563,6 +1563,57 @@ section {
 }
 
 /* ─── Platform install guides ─── */
+.install-guides-intro {
+  padding: 2.5rem 0 1rem;
+  text-align: center;
+}
+
+.install-guides-intro h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.5rem;
+}
+
+.install-guides-intro p {
+  margin: 0 auto 1.25rem;
+  max-width: 42rem;
+  color: var(--text-muted);
+}
+
+.install-guides-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.install-guides-nav a {
+  padding: 0.45rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.9rem;
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.install-guides-nav a:hover {
+  border-color: var(--accent);
+  background: rgba(0, 230, 184, 0.06);
+}
+
+.download-guide-link {
+  display: block;
+  margin-top: 0.65rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  text-align: center;
+  text-decoration: none;
+}
+
+.download-guide-link:hover {
+  color: var(--accent);
+}
+
 .section-install-guide {
   padding: 3rem 0 2.5rem;
 }
