@@ -11,9 +11,34 @@ interface Props {
   entries: HistoryEntry[];
   onClear: () => void;
   onRemoveSelected: (ids: string[]) => void;
+  onResume: (entry: HistoryEntry) => void;
+  onRedownload: (entry: HistoryEntry) => void;
   onOpenFolder: (path: string) => void;
   onOpenFile: (path: string) => void;
   onOpenLocation: (path: string) => void;
+}
+
+function canResumeFromHistory(entry: HistoryEntry): boolean {
+  if (entry.status === "incomplete") return true;
+  if (entry.status === "cancelled" || entry.status === "error") {
+    return Boolean(
+      entry.filePath || entry.children?.some((child) => child.filePath)
+    );
+  }
+  return false;
+}
+
+function canRedownloadFromHistory(entry: HistoryEntry): boolean {
+  return (
+    entry.status === "incomplete" ||
+    entry.status === "cancelled" ||
+    entry.status === "error"
+  );
+}
+
+function statusLabel(status: HistoryEntry["status"]): string {
+  if (status === "incomplete") return "uncompleted";
+  return status;
 }
 
 function isPlaylistEntry(entry: HistoryEntry): boolean {
@@ -25,6 +50,8 @@ function HistoryRow({
   selected,
   searchQuery,
   onToggleSelected,
+  onResume,
+  onRedownload,
   onOpenFolder,
   onOpenFile,
   onOpenLocation,
@@ -33,6 +60,8 @@ function HistoryRow({
   selected: boolean;
   searchQuery: string;
   onToggleSelected: (id: string, checked: boolean) => void;
+  onResume: (entry: HistoryEntry) => void;
+  onRedownload: (entry: HistoryEntry) => void;
   onOpenFolder: (path: string) => void;
   onOpenFile: (path: string) => void;
   onOpenLocation: (path: string) => void;
@@ -136,7 +165,7 @@ function HistoryRow({
               <span className="history-type-pill">Playlist · {itemLabel} items</span>
             )}
             <span className={`history-status history-status-${entry.status}`}>
-              {entry.status}
+              {statusLabel(entry.status)}
             </span>
           </div>
           <span className="history-date">{new Date(entry.finishedAt).toLocaleString()}</span>
@@ -152,6 +181,24 @@ function HistoryRow({
         </div>
 
         <div className="history-actions">
+          {canResumeFromHistory(entry) && (
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={() => onResume(entry)}
+            >
+              Resume
+            </button>
+          )}
+          {canRedownloadFromHistory(entry) && (
+            <button
+              type="button"
+              className="btn btn-warn btn-sm"
+              onClick={() => onRedownload(entry)}
+            >
+              Redownload
+            </button>
+          )}
           {entry.filePath ? (
             <>
               <button
@@ -214,6 +261,8 @@ export default function DownloadHistory({
   entries,
   onClear,
   onRemoveSelected,
+  onResume,
+  onRedownload,
   onOpenFolder,
   onOpenFile,
   onOpenLocation,
@@ -289,7 +338,7 @@ export default function DownloadHistory({
         <div className="history-empty">
           <span className="history-empty-icon">📭</span>
           <p>No recent downloads</p>
-          <span className="hint">Completed, cancelled, and failed downloads appear here.</span>
+          <span className="hint">Completed, uncompleted, cancelled, and failed downloads appear here.</span>
         </div>
       ) : (
         <>
@@ -320,6 +369,7 @@ export default function DownloadHistory({
                 [
                   ["all", "All"],
                   ["complete", "Complete"],
+                  ["incomplete", "Uncompleted"],
                   ["cancelled", "Cancelled"],
                   ["error", "Failed"],
                 ] as const
@@ -382,6 +432,8 @@ export default function DownloadHistory({
                     selected={selectedIds.has(entry.id)}
                     searchQuery={searchQuery}
                     onToggleSelected={toggleEntry}
+                    onResume={onResume}
+                    onRedownload={onRedownload}
                     onOpenFolder={onOpenFolder}
                     onOpenFile={onOpenFile}
                     onOpenLocation={onOpenLocation}

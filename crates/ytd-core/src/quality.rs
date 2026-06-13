@@ -1,60 +1,7 @@
-use crate::deps::{common_ytdlp_args, ytdlp_program};
+use crate::deps::ytdlp_probe_output;
 use crate::error::{Result, YtdError};
 use crate::paths::YtdPaths;
 use crate::types::{QualityResolution, STANDARD_HEIGHTS};
-use std::process::Command;
-
-fn ytdlp_probe(paths: &YtdPaths, url: &str, extra_args: &[&str]) -> String {
-    let program = match ytdlp_program() {
-        Ok(p) => p,
-        Err(_) => return String::new(),
-    };
-
-    let mut args = common_ytdlp_args(&paths.cookie_file);
-    args.push("--no-playlist".into());
-    args.push("--quiet".into());
-    for a in extra_args {
-        args.push((*a).into());
-    }
-    args.push(url.into());
-
-    let run = || {
-        Command::new(&program)
-            .args(&args)
-            .output()
-            .ok()
-            .filter(|o| o.status.success())
-            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
-            .unwrap_or_default()
-    };
-
-    let output = run();
-    if output.is_empty() {
-        let mut no_cookie: Vec<String> = vec![
-            "--no-playlist".into(),
-            "--no-warnings".into(),
-            "--quiet".into(),
-            "--socket-timeout".into(),
-            "10".into(),
-            "--retries".into(),
-            "2".into(),
-        ];
-        no_cookie.extend(crate::deps::js_runtime_args());
-        for a in extra_args {
-            no_cookie.push((*a).into());
-        }
-        no_cookie.push(url.into());
-        Command::new(&program)
-            .args(&no_cookie)
-            .output()
-            .ok()
-            .filter(|o| o.status.success())
-            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
-            .unwrap_or_default()
-    } else {
-        output
-    }
-}
 
 fn parse_heights(output: &str) -> Vec<u32> {
     let mut heights: Vec<u32> = output
@@ -67,17 +14,16 @@ fn parse_heights(output: &str) -> Vec<u32> {
 }
 
 pub fn fetch_available_video_heights(paths: &YtdPaths, url: &str) -> Result<Vec<u32>> {
-    let mut heights = parse_heights(&ytdlp_probe(
-        paths,
-        url,
-        &["-f", "bv*", "--print", "%(height)s"],
-    ));
+    let clean = crate::metadata::normalize_youtube_url(url);
+    let mut heights = parse_heights(
+        &ytdlp_probe_output(paths, &clean, false, &["-f", "bv*", "--print", "%(height)s"])
+            .unwrap_or_default(),
+    );
     if heights.is_empty() {
-        heights = parse_heights(&ytdlp_probe(
-            paths,
-            url,
-            &["-f", "b", "--print", "%(height)s"],
-        ));
+        heights = parse_heights(
+            &ytdlp_probe_output(paths, &clean, false, &["-f", "b", "--print", "%(height)s"])
+                .unwrap_or_default(),
+        );
     }
     Ok(heights)
 }

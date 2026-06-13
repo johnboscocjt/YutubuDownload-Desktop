@@ -103,7 +103,7 @@ function scoreEntry(entry: HistoryEntry, tokens: string[]): number {
   return score;
 }
 
-export type HistoryStatusFilter = "all" | "complete" | "cancelled" | "error";
+export type HistoryStatusFilter = "all" | "complete" | "incomplete" | "cancelled" | "error";
 
 function matchesStatusFilter(entry: HistoryEntry, filter: HistoryStatusFilter): boolean {
   if (filter === "all") return true;

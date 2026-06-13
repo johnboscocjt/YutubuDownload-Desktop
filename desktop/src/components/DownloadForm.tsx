@@ -1,4 +1,5 @@
 import { open } from "@tauri-apps/plugin-dialog";
+import { defaultPlaylistFolderLabel, playlistSavePath } from "../playlistProgress";
 import type { MetadataInfo, QualityResolution } from "../types";
 
 interface Props {
@@ -16,7 +17,9 @@ interface Props {
   setOutputDir: (v: string) => void;
   metadata: MetadataInfo | null;
   busy: boolean;
+  probing: boolean;
   preparing: boolean;
+  canStart: boolean;
   downloadComplete: boolean;
   onProbe: () => void;
   onDownload: () => void;
@@ -38,12 +41,19 @@ export default function DownloadForm({
   setOutputDir,
   metadata,
   busy,
+  probing,
   preparing,
+  canStart,
   downloadComplete,
   onProbe,
   onDownload,
   onRedownload,
 }: Props) {
+  const playlistFolder =
+    isPlaylist && metadata ? defaultPlaylistFolderLabel(metadata) : null;
+  const playlistFullPath =
+    isPlaylist && metadata ? playlistSavePath(outputDir, metadata) : null;
+
   async function pickFolder() {
     const selected = await open({
       directory: true,
@@ -58,7 +68,12 @@ export default function DownloadForm({
   return (
     <div className="card glass">
       <h2>Download</h2>
-
+      <p className="hint desktop-value-hint">
+        Same yt-dlp speed as terminal <code>ytd</code> — plus live preview, progress,
+        history, and built-in playback. Paste a URL and hit{" "}
+        <strong>Start download</strong> anytime; title and quality check run in the
+        background.
+      </p>
       <label htmlFor="url">YouTube URL</label>
       <input
         id="url"
@@ -116,11 +131,17 @@ export default function DownloadForm({
               </option>
             ))}
           </select>
-          {qualityMsg && <p className="hint">{qualityMsg}</p>}
+          {qualityMsg && (
+            <p className={`hint${probing ? " hint--active" : ""}`}>{qualityMsg}</p>
+          )}
         </>
       )}
 
       <label htmlFor="out">Destination</label>
+      <p className="hint">
+        Saves to <code>~/YutubuDownload-Desktop</code> — separate from terminal{" "}
+        <code>ytd</code>. Uses the same shared cookies as CLI for fast starts.
+      </p>
       <div className="row">
         <input id="out" type="text" value={outputDir} readOnly />
         <button type="button" className="btn btn-secondary" onClick={pickFolder}>
@@ -136,12 +157,47 @@ export default function DownloadForm({
             </div>
           )}
           <div className="preview-info">
-            <strong>{metadata.title ?? metadata.playlist_title ?? "Unknown"}</strong>
-            {metadata.duration && <div>Duration: {metadata.duration}</div>}
-            {metadata.entry_count != null && (
-              <div>Playlist items: {metadata.entry_count}</div>
+            {isPlaylist ? (
+              <>
+                <span className="preview-badge">Playlist</span>
+                <strong>
+                  {metadata.playlist_title ??
+                    metadata.title ??
+                    "Loading playlist…"}
+                </strong>
+                {metadata.entry_count != null && (
+                  <div>{metadata.entry_count} videos</div>
+                )}
+                {metadata.playlist_id && (
+                  <div className="preview-meta-id">ID: {metadata.playlist_id}</div>
+                )}
+                {playlistFolder && (
+                  <div className="preview-folder">
+                    Folder: <code>{playlistFolder}/</code>
+                    <span className="hint-inline">
+                      {" "}
+                      (CLI default — same playlist reuses this folder, skips finished
+                      files)
+                    </span>
+                  </div>
+                )}
+                {playlistFullPath && (
+                  <div className="preview-folder-path" title={playlistFullPath}>
+                    → {playlistFullPath}/
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <strong>
+                  {metadata.title ??
+                    metadata.playlist_title ??
+                    (metadata.video_id ? "Loading title…" : "Unknown")}
+                </strong>
+                {metadata.duration && <div>Duration: {metadata.duration}</div>}
+              </>
             )}
-            {metadata.video_id && <div>ID: {metadata.video_id}</div>}
+            {metadata.video_id && !isPlaylist && <div>ID: {metadata.video_id}</div>}
           </div>
         </div>
       )}
@@ -150,16 +206,16 @@ export default function DownloadForm({
         <button
           type="button"
           className="btn btn-secondary"
-          disabled={busy || preparing || !url}
+          disabled={probing || preparing || !url}
           onClick={onProbe}
         >
-          {busy && !preparing ? "Checking…" : "Preview & verify quality"}
+          {probing ? "Checking…" : "Preview & verify quality"}
         </button>
         {downloadComplete ? (
           <button
             type="button"
             className="btn btn-primary"
-            disabled={busy || preparing || !url || !outputDir}
+            disabled={!canStart || busy || preparing}
             onClick={onRedownload}
           >
             {preparing ? "Preparing…" : "Redownload"}
@@ -168,10 +224,10 @@ export default function DownloadForm({
           <button
             type="button"
             className="btn btn-primary"
-            disabled={busy || preparing || !url || !outputDir}
+            disabled={!canStart || busy || preparing}
             onClick={onDownload}
           >
-            {preparing ? "Starting…" : "Start download"}
+            {preparing ? "Starting…" : probing ? "Start download (preview loading…)" : "Start download"}
           </button>
         )}
       </div>

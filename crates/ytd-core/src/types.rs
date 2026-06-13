@@ -42,6 +42,7 @@ pub struct QualityResolution {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetadataInfo {
     pub video_id: Option<String>,
+    pub playlist_id: Option<String>,
     pub title: Option<String>,
     pub duration: Option<String>,
     pub thumbnail_url: Option<String>,

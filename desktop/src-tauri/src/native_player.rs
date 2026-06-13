@@ -10,6 +10,9 @@ static MPV_CHILD: Mutex<Option<Child>> = Mutex::new(None);
 static MPV_IPC_PATH: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 #[cfg(target_os = "linux")]
+static PLAYER_OP_LOCK: Mutex<()> = Mutex::new(());
+
+#[cfg(target_os = "linux")]
 static EMBED_PTR: Mutex<Option<usize>> = Mutex::new(None);
 
 #[cfg(target_os = "linux")]
@@ -58,6 +61,12 @@ pub fn has_native_player() -> bool {
 }
 
 pub fn stop_mpv_process() -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    let _guard = PLAYER_OP_LOCK.lock().map_err(|e| e.to_string());
+    stop_mpv_process_inner()
+}
+
+fn stop_mpv_process_inner() -> Result<(), String> {
     let mut guard = MPV_CHILD.lock().map_err(|e| e.to_string())?;
     if let Some(mut child) = guard.take() {
         let _ = child.kill();
@@ -86,6 +95,72 @@ fn ipc_socket_path() -> PathBuf {
 }
 
 #[cfg(target_os = "linux")]
+fn refresh_mpv_child_status() -> Result<(), String> {
+    let mut guard = MPV_CHILD.lock().map_err(|e| e.to_string())?;
+    if let Some(ref mut child) = *guard {
+        if let Ok(Some(_)) = child.try_wait() {
+            *guard = None;
+            if let Ok(mut path) = MPV_IPC_PATH.lock() {
+                if let Some(sock) = path.take() {
+                    let _ = std::fs::remove_file(sock);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn mpv_child_alive() -> bool {
+    refresh_mpv_child_status().ok();
+    MPV_CHILD
+        .lock()
+        .ok()
+        .and_then(|g| g.as_ref().map(|_| true))
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "linux")]
+fn connect_mpv_ipc_with_retries(max_attempts: u32) -> Result<std::os::unix::net::UnixStream, String> {
+    use std::os::unix::net::UnixStream;
+    use std::time::Duration;
+
+    refresh_mpv_child_status()?;
+    if !mpv_child_alive() {
+        return Err("Player is not running.".to_string());
+    }
+
+    let path = MPV_IPC_PATH
+        .lock()
+        .map_err(|e| e.to_string())?
+        .clone()
+        .ok_or_else(|| "Player is not running.".to_string())?;
+
+    const RETRY_DELAY_MS: u64 = 25;
+
+    let mut last_err = None;
+    for attempt in 0..max_attempts {
+        match UnixStream::connect(&path) {
+            Ok(stream) => return Ok(stream),
+            Err(e) => {
+                last_err = Some(e);
+                if attempt + 1 < max_attempts {
+                    std::thread::sleep(Duration::from_millis(RETRY_DELAY_MS));
+                }
+            }
+        }
+    }
+
+    let e = last_err.unwrap();
+    Err(format!("Could not reach mpv ({e})"))
+}
+
+#[cfg(target_os = "linux")]
+fn connect_mpv_ipc() -> Result<std::os::unix::net::UnixStream, String> {
+    connect_mpv_ipc_with_retries(24)
+}
+
+#[cfg(target_os = "linux")]
 fn mpv_ipc_payload(action: &str) -> Result<&'static str, String> {
     match action {
         "pause" => Ok(r#"{"command":["cycle","pause"]}"#),
@@ -103,16 +178,8 @@ fn mpv_ipc_payload(action: &str) -> Result<&'static str, String> {
 #[cfg(target_os = "linux")]
 fn query_mpv_property(property: &str) -> Result<serde_json::Value, String> {
     use std::io::{BufRead, BufReader, Write};
-    use std::os::unix::net::UnixStream;
 
-    let path = MPV_IPC_PATH
-        .lock()
-        .map_err(|e| e.to_string())?
-        .clone()
-        .ok_or_else(|| "Player is not running.".to_string())?;
-
-    let mut stream =
-        UnixStream::connect(&path).map_err(|e| format!("Could not reach mpv ({e})"))?;
+    let mut stream = connect_mpv_ipc()?;
     writeln!(
         stream,
         "{}",
@@ -160,10 +227,58 @@ fn set_mpv_volume(volume: f64) -> Result<(), String> {
 }
 
 #[cfg(target_os = "linux")]
-fn query_mpv_progress() -> Result<(f64, f64), String> {
+fn query_mpv_progress() -> Result<(f64, f64, bool), String> {
     let position = query_mpv_property("time-pos")?.as_f64().unwrap_or(0.0);
     let duration = query_mpv_property("duration")?.as_f64().unwrap_or(0.0);
-    Ok((position.max(0.0), duration.max(0.0)))
+    let ended = query_mpv_property("eof-reached")?
+        .as_bool()
+        .unwrap_or(false);
+    Ok((position.max(0.0), duration.max(0.0), ended))
+}
+
+#[cfg(target_os = "linux")]
+fn load_mpv_file(path: &str) -> Result<(), String> {
+    use std::time::Duration;
+
+    if !std::path::Path::new(path).is_file() {
+        return Err(format!("Media file not found: {path}"));
+    }
+    if !mpv_child_alive() {
+        return Err("Player is not running.".to_string());
+    }
+    let payload = serde_json::json!({
+        "command": ["loadfile", path, "replace"]
+    });
+    send_mpv_ipc_raw(&payload.to_string())?;
+    for _ in 0..30 {
+        std::thread::sleep(Duration::from_millis(50));
+        if let Ok(duration) = query_mpv_property("duration") {
+            if duration.as_f64().unwrap_or(0.0) > 0.0 {
+                break;
+            }
+        }
+    }
+    let _ = send_mpv_ipc_raw(r#"{"command":["set_property","pause",false]}"#);
+    refresh_mpv_surface();
+    let _ = send_mpv_ipc("fitWindow");
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn wait_for_mpv_media_open() {
+    use std::time::Duration;
+
+    for _ in 0..40 {
+        std::thread::sleep(Duration::from_millis(50));
+        if let Ok(duration) = query_mpv_property("duration") {
+            if duration.as_f64().unwrap_or(0.0) > 0.0 {
+                return;
+            }
+        }
+        if !mpv_child_alive() {
+            return;
+        }
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -175,16 +290,8 @@ fn seek_mpv_absolute(seconds: f64) -> Result<(), String> {
 #[cfg(target_os = "linux")]
 fn send_mpv_ipc_raw(payload: &str) -> Result<(), String> {
     use std::io::{BufRead, BufReader, Write};
-    use std::os::unix::net::UnixStream;
 
-    let path = MPV_IPC_PATH
-        .lock()
-        .map_err(|e| e.to_string())?
-        .clone()
-        .ok_or_else(|| "Player is not running.".to_string())?;
-
-    let mut stream =
-        UnixStream::connect(&path).map_err(|e| format!("Could not reach mpv ({e})"))?;
+    let mut stream = connect_mpv_ipc()?;
     writeln!(stream, "{payload}").map_err(|e| e.to_string())?;
     let mut reader = BufReader::new(stream);
     let mut line = String::new();
@@ -395,7 +502,7 @@ fn spawn_mpv_embedded(path: &str, wid: u64) -> Result<Child, String> {
     let child = Command::new(mpv)
         .args([
             "--no-terminal",
-            "--keep-open=no",
+            "--keep-open=yes",
             "--fs=no",
             "--hwdec=auto-safe",
             "--vo=x11",
@@ -410,6 +517,7 @@ fn spawn_mpv_embedded(path: &str, wid: u64) -> Result<Child, String> {
             "--ontop=no",
             "--no-input-default-bindings",
             "--force-window=yes",
+            "--pause=no",
             &format!("--input-ipc-server={}", ipc_path.display()),
             &format!("--wid={wid}"),
             path,
@@ -464,34 +572,77 @@ pub async fn start_native_player(
 
     #[cfg(target_os = "linux")]
     {
-        if !can_embed_mpv() {
-            return Err("embed_unavailable".to_string());
-        }
-
-        stop_mpv_process()?;
-
         let win = window.clone();
-        let bounds_clone = bounds.clone();
-        let wid = run_on_main(&win.clone(), move || create_child_embed(&win, &bounds_clone))?;
+        tokio::task::spawn_blocking(move || start_native_player_blocking(win, path, bounds))
+            .await
+            .map_err(|e| format!("Player thread failed: {e}"))?
+    }
+}
 
-        let win_show = window.clone();
-        let bounds_show = bounds.clone();
-        run_on_main(&win_show.clone(), move || reposition_child_embed(&win_show, &bounds_show))?;
+#[cfg(target_os = "linux")]
+fn start_native_player_blocking(
+    window: WebviewWindow,
+    path: String,
+    bounds: NativePlayerBounds,
+) -> Result<(), String> {
+    let _guard = PLAYER_OP_LOCK.lock().map_err(|e| e.to_string())?;
 
-        std::thread::sleep(std::time::Duration::from_millis(50));
-        let child = spawn_mpv_embedded(&path, wid)?;
-        *MPV_CHILD.lock().map_err(|e| e.to_string())? = Some(child);
-        std::thread::sleep(std::time::Duration::from_millis(200));
+    if !can_embed_mpv() {
+        return Err("embed_unavailable".to_string());
+    }
 
-        refresh_mpv_surface();
-        let _ = send_mpv_ipc("fitWindow");
-        let _ = send_mpv_ipc("fillFrame");
+    stop_mpv_process_inner()?;
 
-        let win_final = window.clone();
-        let bounds_final = bounds.clone();
-        run_on_main(&win_final.clone(), move || reposition_child_embed(&win_final, &bounds_final))?;
+    let win = window.clone();
+    let bounds_clone = bounds.clone();
+    let wid = run_on_main(&win.clone(), move || create_child_embed(&win, &bounds_clone))?;
 
-        Ok(())
+    let win_show = window.clone();
+    let bounds_show = bounds.clone();
+    run_on_main(&win_show.clone(), move || reposition_child_embed(&win_show, &bounds_show))?;
+
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    let child = spawn_mpv_embedded(&path, wid)?;
+    *MPV_CHILD.lock().map_err(|e| e.to_string())? = Some(child);
+
+    wait_for_mpv_media_open();
+    refresh_mpv_surface();
+    let _ = send_mpv_ipc("fitWindow");
+    let _ = send_mpv_ipc("fillFrame");
+
+    let win_final = window.clone();
+    let bounds_final = bounds.clone();
+    run_on_main(&win_final.clone(), move || reposition_child_embed(&win_final, &bounds_final))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn native_player_alive() -> bool {
+    #[cfg(not(target_os = "linux"))]
+    {
+        return false;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        refresh_mpv_child_status().ok();
+        mpv_child_alive()
+    }
+}
+
+#[tauri::command]
+pub fn native_player_load(path: String) -> Result<(), String> {
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = path;
+        return Err("Player load is only available on Linux.".to_string());
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let _guard = PLAYER_OP_LOCK.lock().map_err(|e| e.to_string())?;
+        load_mpv_file(&path)
     }
 }
 
@@ -504,7 +655,8 @@ pub fn native_player_paused() -> Result<bool, String> {
 
     #[cfg(target_os = "linux")]
     {
-        if MPV_CHILD.lock().map_err(|e| e.to_string())?.is_none() {
+        refresh_mpv_child_status()?;
+        if !mpv_child_alive() {
             return Err("Player is not running.".to_string());
         }
         query_mpv_pause()
@@ -516,6 +668,7 @@ pub fn native_player_paused() -> Result<bool, String> {
 pub struct NativePlayerProgress {
     pub position: f64,
     pub duration: f64,
+    pub ended: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -532,16 +685,26 @@ pub fn native_player_progress() -> Result<NativePlayerProgress, String> {
         return Ok(NativePlayerProgress {
             position: 0.0,
             duration: 0.0,
+            ended: false,
         });
     }
 
     #[cfg(target_os = "linux")]
     {
-        if MPV_CHILD.lock().map_err(|e| e.to_string())?.is_none() {
-            return Err("Player is not running.".to_string());
+        refresh_mpv_child_status()?;
+        if !mpv_child_alive() {
+            return Ok(NativePlayerProgress {
+                position: 0.0,
+                duration: 0.0,
+                ended: true,
+            });
         }
-        let (position, duration) = query_mpv_progress()?;
-        Ok(NativePlayerProgress { position, duration })
+        let (position, duration, ended) = query_mpv_progress()?;
+        Ok(NativePlayerProgress {
+            position,
+            duration,
+            ended,
+        })
     }
 }
 
@@ -557,7 +720,8 @@ pub fn native_player_volume() -> Result<NativePlayerVolume, String> {
 
     #[cfg(target_os = "linux")]
     {
-        if MPV_CHILD.lock().map_err(|e| e.to_string())?.is_none() {
+        refresh_mpv_child_status()?;
+        if !mpv_child_alive() {
             return Err("Player is not running.".to_string());
         }
         let (volume, muted) = query_mpv_volume()?;
@@ -575,7 +739,8 @@ pub fn native_player_set_volume(volume: f64) -> Result<(), String> {
 
     #[cfg(target_os = "linux")]
     {
-        if MPV_CHILD.lock().map_err(|e| e.to_string())?.is_none() {
+        refresh_mpv_child_status()?;
+        if !mpv_child_alive() {
             return Err("Player is not running.".to_string());
         }
         set_mpv_volume(volume)
@@ -592,7 +757,8 @@ pub fn native_player_seek(seconds: f64) -> Result<(), String> {
 
     #[cfg(target_os = "linux")]
     {
-        if MPV_CHILD.lock().map_err(|e| e.to_string())?.is_none() {
+        refresh_mpv_child_status()?;
+        if !mpv_child_alive() {
             return Err("Player is not running.".to_string());
         }
         seek_mpv_absolute(seconds)
@@ -612,7 +778,8 @@ pub fn native_player_control(action: String) -> Result<(), String> {
         if action == "fullscreen" {
             return Ok(());
         }
-        if MPV_CHILD.lock().map_err(|e| e.to_string())?.is_none() {
+        refresh_mpv_child_status()?;
+        if !mpv_child_alive() {
             return Err("Player is not running.".to_string());
         }
         send_mpv_ipc(&action)
@@ -641,7 +808,8 @@ pub async fn update_native_player_bounds(
 
     #[cfg(target_os = "linux")]
     {
-        if MPV_CHILD.lock().map_err(|e| e.to_string())?.is_none() {
+        refresh_mpv_child_status()?;
+        if !mpv_child_alive() {
             return Ok(());
         }
 

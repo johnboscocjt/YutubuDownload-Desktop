@@ -140,11 +140,22 @@ impl DownloadManager {
             phase: ProgressPhase::Starting,
         });
 
-        let child = Command::new(&program)
-            .args(&args)
+        let mut cmd = Command::new(&program);
+        cmd.args(&args)
             .current_dir(&output_dir)
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+        #[cfg(unix)]
+        {
+            unsafe {
+                cmd.pre_exec(|| {
+                    use nix::unistd::{setpgid, Pid};
+                    let _ = setpgid(Pid::from_raw(0), Pid::from_raw(0));
+                    Ok(())
+                });
+            }
+        }
+        let child = cmd
             .spawn()
             .map_err(|e| YtdError::YtdlpFailed(e.to_string()))?;
 
@@ -161,133 +172,143 @@ impl DownloadManager {
         let output_dir_str = config.output_dir.clone();
 
         tokio::spawn(async move {
-            let mut guard = child_handle.lock().await;
-            let child = guard.as_mut();
+            let (stdout, stderr) = {
+                let mut guard = child_handle.lock().await;
+                let child = match guard.as_mut() {
+                    Some(c) => c,
+                    None => return,
+                };
+                (child.stdout.take(), child.stderr.take())
+            };
+
             let mut state = ParseState::default();
-            let result = if let Some(c) = child {
-                let stdout = c.stdout.take();
-                let stderr = c.stderr.take();
-                let progress_re =
-                    Regex::new(r"^\[download\]\s+([0-9.]+)%").unwrap();
-                let size_re = Regex::new(r"of\s+~?\s*([0-9.]+)([KMGT])iB").unwrap();
-                let speed_re = Regex::new(r"at\s+([0-9.]+)([KMGT]?)iB/s").unwrap();
-                let eta_re = Regex::new(r"ETA\s+([0-9:]+)").unwrap();
-                let item_re = Regex::new(r"Downloading item\s+([0-9]+)\s+of\s+([0-9]+)").unwrap();
+            let progress_re = Regex::new(r"^\[download\]\s+([0-9.]+)%").unwrap();
+            let size_re = Regex::new(r"of\s+~?\s*([0-9.]+)([KMGT])iB").unwrap();
+            let speed_re = Regex::new(r"at\s+([0-9.]+)([KMGT]?)iB/s").unwrap();
+            let eta_re = Regex::new(r"ETA\s+([0-9:]+)").unwrap();
+            let item_re = Regex::new(
+                r"(?i)Downloading\s+(?:(?:item|video)\s+)?([0-9]+)\s+of\s+([0-9]+)",
+            )
+            .unwrap();
 
-                let dest_re = Regex::new(r"^\[download\]\ +Destination:\ +(.*)$").unwrap();
-                let merger_re =
-                    Regex::new(r#"^\[Merger\]\ Merging formats into "(.+)"$"#).unwrap();
-                let title_re = Regex::new(r"^\[info\]\ +([^:]+):\ +Downloading").unwrap();
+            let dest_re = Regex::new(r"^\[download\]\ +Destination:\ +(.*)$").unwrap();
+            let merger_re =
+                Regex::new(r#"^\[Merger\]\ Merging formats into "(.+)"$"#).unwrap();
+            let title_re = Regex::new(r"^\[info\]\ +([^:]+):\ +Downloading").unwrap();
 
-                if let Some(out) = stdout {
-                    let mut lines = BufReader::new(out).lines();
-                    while let Ok(Some(line)) = lines.next_line().await {
-                        if let Some(caps) = item_re.captures(&line) {
-                            state.item_index = caps.get(1).and_then(|m| m.as_str().parse().ok());
-                            state.total_items = caps.get(2).and_then(|m| m.as_str().parse().ok());
+            if let Some(out) = stdout {
+                let mut lines = BufReader::new(out).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    if let Some(caps) = item_re.captures(&line) {
+                        state.item_index = caps.get(1).and_then(|m| m.as_str().parse().ok());
+                        state.total_items = caps.get(2).and_then(|m| m.as_str().parse().ok());
+                    }
+                    if let Some(caps) = merger_re.captures(&line) {
+                        let dest = caps[1].to_string();
+                        state.last_output_file = Some(dest.clone());
+                        if let Some(title) = title_from_output_path(&dest) {
+                            state.title = Some(title);
                         }
-                        if let Some(caps) = merger_re.captures(&line) {
-                            let dest = caps[1].to_string();
+                    }
+                    if let Some(caps) = dest_re.captures(&line) {
+                        let dest = caps[1].to_string();
+                        if is_final_media_dest(&dest) {
                             state.last_output_file = Some(dest.clone());
                             if let Some(title) = title_from_output_path(&dest) {
                                 state.title = Some(title);
                             }
                         }
-                        if let Some(caps) = dest_re.captures(&line) {
-                            let dest = caps[1].to_string();
-                            if is_final_media_dest(&dest) {
-                                state.last_output_file = Some(dest.clone());
-                                if let Some(title) = title_from_output_path(&dest) {
-                                    state.title = Some(title);
-                                }
-                            }
-                        }
-                        if let Some(caps) = title_re.captures(&line) {
-                            state.title = Some(caps[1].trim().to_string());
-                        }
-                        if line.to_lowercase().contains("retry")
-                            || line.to_lowercase().contains("connection reset")
-                            || line.to_lowercase().contains("http error")
-                        {
-                            state.mark_weak_network(true);
-                        }
-                        if let Some(caps) = progress_re.captures(&line) {
-                            let percent: f64 = caps[1].parse().unwrap_or(0.0);
-                            state.last_percent = Some(percent);
-                            let file_size = size_re
-                                .captures(&line)
-                                .map(|c| format!("{}{}iB", &c[1], &c[2]));
-                            let speed = speed_re
-                                .captures(&line)
-                                .map(|c| format!("{}{}iB/s", &c[1], &c[2]));
-                            if speed.as_deref() == Some("0B/s") && percent >= 10.0 {
-                                state.mark_weak_network(false);
-                            } else if speed.is_some() {
-                                state.mark_network_stable();
-                            }
-                            let eta = eta_re
-                                .captures(&line)
-                                .map(|c| c[1].to_string());
-                            let _ = progress_tx.send(ProgressEvent {
-                                job_id: job_id_clone.clone(),
-                                percent: Some(percent),
-                                speed,
-                                eta,
-                                file_size,
-                                title: state.title.clone(),
-                                item_index: state.item_index,
-                                total_items: state.total_items,
-                                low_network: state.low_network,
-                                log_line: None,
-                                output_file: state.last_output_file.clone(),
-                                phase: ProgressPhase::Downloading,
-                            });
-                        } else if line.contains("[download]") || line.contains("[info]") {
-                            let _ = progress_tx.send(ProgressEvent {
-                                job_id: job_id_clone.clone(),
-                                percent: state.last_percent,
-                                speed: None,
-                                eta: None,
-                                file_size: None,
-                                title: state.title.clone(),
-                                item_index: state.item_index,
-                                total_items: state.total_items,
-                                low_network: state.low_network,
-                                log_line: Some(line),
-                                output_file: state.last_output_file.clone(),
-                                phase: ProgressPhase::Downloading,
-                            });
+                    }
+                    if let Some(caps) = title_re.captures(&line) {
+                        let candidate = caps[1].trim();
+                        if !is_likely_youtube_id(candidate) {
+                            state.title = Some(candidate.to_string());
                         }
                     }
-                }
-                if let Some(err) = stderr {
-                    let mut lines = BufReader::new(err).lines();
-                    while let Ok(Some(line)) = lines.next_line().await {
-                        if !line.trim().is_empty() {
-                            state.mark_weak_network(true);
-                            let _ = progress_tx.send(ProgressEvent {
-                                job_id: job_id_clone.clone(),
-                                percent: state.last_percent,
-                                speed: None,
-                                eta: None,
-                                file_size: None,
-                                title: state.title.clone(),
-                                item_index: state.item_index,
-                                total_items: state.total_items,
-                                low_network: state.low_network,
-                                log_line: Some(line),
-                                output_file: state.last_output_file.clone(),
-                                phase: ProgressPhase::Downloading,
-                            });
+                    if line.to_lowercase().contains("retry")
+                        || line.to_lowercase().contains("connection reset")
+                        || line.to_lowercase().contains("http error")
+                    {
+                        state.mark_weak_network(true);
+                    }
+                    if let Some(caps) = progress_re.captures(&line) {
+                        let percent: f64 = caps[1].parse().unwrap_or(0.0);
+                        state.last_percent = Some(percent);
+                        let file_size = size_re
+                            .captures(&line)
+                            .map(|c| format!("{}{}iB", &c[1], &c[2]));
+                        let speed = speed_re
+                            .captures(&line)
+                            .map(|c| format!("{}{}iB/s", &c[1], &c[2]));
+                        if speed.as_deref() == Some("0B/s") && percent >= 10.0 {
+                            state.mark_weak_network(false);
+                        } else if speed.is_some() {
+                            state.mark_network_stable();
                         }
+                        let eta = eta_re
+                            .captures(&line)
+                            .map(|c| c[1].to_string());
+                        let _ = progress_tx.send(ProgressEvent {
+                            job_id: job_id_clone.clone(),
+                            percent: Some(percent),
+                            speed,
+                            eta,
+                            file_size,
+                            title: state.title.clone(),
+                            item_index: state.item_index,
+                            total_items: state.total_items,
+                            low_network: state.low_network,
+                            log_line: None,
+                            output_file: state.last_output_file.clone(),
+                            phase: ProgressPhase::Downloading,
+                        });
+                    } else if line.contains("[download]") || line.contains("[info]") {
+                        let _ = progress_tx.send(ProgressEvent {
+                            job_id: job_id_clone.clone(),
+                            percent: state.last_percent,
+                            speed: None,
+                            eta: None,
+                            file_size: None,
+                            title: state.title.clone(),
+                            item_index: state.item_index,
+                            total_items: state.total_items,
+                            low_network: state.low_network,
+                            log_line: Some(line),
+                            output_file: state.last_output_file.clone(),
+                            phase: ProgressPhase::Downloading,
+                        });
                     }
                 }
-                c.wait().await
-            } else {
-                Err(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    "process not running",
-                ))
+            }
+            if let Some(err) = stderr {
+                let mut lines = BufReader::new(err).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    if !line.trim().is_empty() {
+                        state.mark_weak_network(true);
+                        let _ = progress_tx.send(ProgressEvent {
+                            job_id: job_id_clone.clone(),
+                            percent: state.last_percent,
+                            speed: None,
+                            eta: None,
+                            file_size: None,
+                            title: state.title.clone(),
+                            item_index: state.item_index,
+                            total_items: state.total_items,
+                            low_network: state.low_network,
+                            log_line: Some(line),
+                            output_file: state.last_output_file.clone(),
+                            phase: ProgressPhase::Downloading,
+                        });
+                    }
+                }
+            }
+
+            let result = {
+                let mut guard = child_handle.lock().await;
+                match guard.as_mut() {
+                    Some(c) => Some(c.wait().await),
+                    None => None,
+                }
             };
 
             jobs.write().await.remove(&job_id_clone);
@@ -315,7 +336,7 @@ impl DownloadManager {
             }
 
             match result {
-                Ok(status) if status.success() => {
+                Some(Ok(status)) if status.success() => {
                     let _ = progress_tx.send(ProgressEvent {
                         job_id: job_id_clone.clone(),
                         percent: Some(100.0),
@@ -338,7 +359,7 @@ impl DownloadManager {
                         output_file: state.last_output_file.clone(),
                     });
                 }
-                Ok(_) => {
+                Some(Ok(_)) => {
                     let _ = complete_tx.send(DownloadCompleteEvent {
                         job_id: job_id_clone,
                         success: false,
@@ -347,12 +368,21 @@ impl DownloadManager {
                         output_file: state.last_output_file.clone(),
                     });
                 }
-                Err(e) => {
+                Some(Err(e)) => {
                     let _ = complete_tx.send(DownloadCompleteEvent {
                         job_id: job_id_clone,
                         success: false,
                         output_dir: output_dir_str,
                         message: e.to_string(),
+                        output_file: state.last_output_file.clone(),
+                    });
+                }
+                None => {
+                    let _ = complete_tx.send(DownloadCompleteEvent {
+                        job_id: job_id_clone,
+                        success: false,
+                        output_dir: output_dir_str,
+                        message: "Download cancelled".into(),
                         output_file: state.last_output_file.clone(),
                     });
                 }
@@ -375,6 +405,12 @@ impl DownloadManager {
             .ok_or_else(|| YtdError::JobNotFound(job_id.into()))?;
         let mut guard = handle.lock().await;
         if let Some(child) = guard.as_mut() {
+            #[cfg(unix)]
+            if let Some(pid) = child.id() {
+                use nix::sys::signal::{kill, Signal};
+                use nix::unistd::Pid;
+                let _ = kill(Pid::from_raw(-(pid as i32)), Signal::SIGKILL);
+            }
             child.kill().await.map_err(YtdError::Io)?;
         }
         *guard = None;
@@ -394,7 +430,7 @@ impl DownloadManager {
             let guard = handle.lock().await;
             if let Some(child) = guard.as_ref() {
                 if let Some(pid) = child.id() {
-                    kill(Pid::from_raw(pid as i32), Signal::SIGSTOP).map_err(|e| {
+                    kill(Pid::from_raw(-(pid as i32)), Signal::SIGSTOP).map_err(|e| {
                         YtdError::Other(format!("Failed to pause download: {e}"))
                     })?;
                     self.paused.write().await.insert(job_id.to_string());
@@ -425,7 +461,7 @@ impl DownloadManager {
             let guard = handle.lock().await;
             if let Some(child) = guard.as_ref() {
                 if let Some(pid) = child.id() {
-                    kill(Pid::from_raw(pid as i32), Signal::SIGCONT).map_err(|e| {
+                    kill(Pid::from_raw(-(pid as i32)), Signal::SIGCONT).map_err(|e| {
                         YtdError::Other(format!("Failed to resume download: {e}"))
                     })?;
                     self.paused.write().await.remove(job_id);
@@ -504,6 +540,23 @@ fn is_final_media_dest(path: &str) -> bool {
         .unwrap_or(false)
 }
 
+fn is_likely_youtube_id(s: &str) -> bool {
+    let t = s.trim();
+    t.len() == 11
+        && t.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+fn normalize_media_title(stem: &str) -> String {
+    let s = stem.trim();
+    if let Ok(re) = Regex::new(r"^\d{1,2}\s*-\s+") {
+        if let Some(m) = re.find(s) {
+            return s[m.end()..].trim().to_string();
+        }
+    }
+    s.to_string()
+}
+
 fn title_from_output_path(path: &str) -> Option<String> {
     let name = Path::new(path)
         .file_name()
@@ -511,14 +564,17 @@ fn title_from_output_path(path: &str) -> Option<String> {
     let stem = Path::new(name)
         .file_stem()
         .and_then(|s| s.to_str())?;
-    Some(
-        stem.trim_end_matches(".mp4")
-            .trim_end_matches(".mp3")
-            .trim_end_matches(".webm")
-            .trim_end_matches(".m4a")
-            .trim_end_matches(".mkv")
-            .to_string(),
-    )
+    let cleaned = stem
+        .trim_end_matches(".mp4")
+        .trim_end_matches(".mp3")
+        .trim_end_matches(".webm")
+        .trim_end_matches(".m4a")
+        .trim_end_matches(".mkv");
+    let title = normalize_media_title(cleaned);
+    if title.is_empty() || is_likely_youtube_id(&title) {
+        return None;
+    }
+    Some(title)
 }
 
 fn is_video_container_ext(path: &Path) -> bool {

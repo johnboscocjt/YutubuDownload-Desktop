@@ -14,15 +14,20 @@ export function refreshCookies(force = false): Promise<string> {
   return invoke("refresh_cookies", { force });
 }
 
+export function defaultDownloadDir(): Promise<string> {
+  return invoke("default_download_dir");
+}
+
 export function listQualities(url: string): Promise<number[]> {
   return invoke("list_qualities", { url });
 }
 
 export function resolveQuality(
   url: string,
-  height: number
+  height: number,
+  listedHeights?: number[]
 ): Promise<QualityResolution> {
-  return invoke("resolve_quality", { url, height });
+  return invoke("resolve_quality", { url, height, listedHeights });
 }
 
 export function fetchMetadata(
@@ -35,7 +40,14 @@ export function fetchMetadata(
 export interface VideoProbeResult {
   metadata: MetadataInfo;
   qualities: number[];
+  availableHeights: number[];
   quality?: QualityResolution;
+}
+
+export function listPlaylistTitles(
+  url: string
+): Promise<{ itemIndex: number; title: string }[]> {
+  return invoke("list_playlist_titles_cmd", { url });
 }
 
 export function probeVideo(
@@ -101,6 +113,23 @@ export function resolvePlayableFiles(
   return invoke("resolve_playable_files", { outputDir, hints });
 }
 
+export interface PartialPlaylistScan {
+  playlistTitle: string;
+  playlistId: string;
+  folderPath: string;
+  url: string;
+  children: PlayableFile[];
+  itemCount: number;
+  completedCount: number;
+  hasArtifacts: boolean;
+}
+
+export function scanPartialPlaylists(
+  outputDir: string
+): Promise<PartialPlaylistScan[]> {
+  return invoke("scan_partial_playlists", { outputDir });
+}
+
 export interface PlaybackPrepInfo {
   needsTranscode: boolean;
   codec?: string;
@@ -137,6 +166,14 @@ export function startNativePlayer(args: {
   return invoke("start_native_player", args);
 }
 
+export function nativePlayerLoad(path: string): Promise<void> {
+  return invoke("native_player_load", { path });
+}
+
+export function nativePlayerAlive(): Promise<boolean> {
+  return invoke("native_player_alive");
+}
+
 export function updateNativePlayerBounds(args: {
   bounds: NativePlayerBounds;
 }): Promise<void> {
@@ -169,6 +206,7 @@ export function nativePlayerPaused(): Promise<boolean> {
 export interface NativePlayerProgress {
   position: number;
   duration: number;
+  ended: boolean;
 }
 
 export function nativePlayerProgress(): Promise<NativePlayerProgress> {

@@ -567,3 +567,148 @@ pub fn open_media_file(app: tauri::AppHandle, path: String) -> Result<(), String
         .open_path(path, None::<&str>)
         .map_err(|e| e.to_string())
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PartialPlaylistScan {
+    pub playlist_title: String,
+    pub playlist_id: String,
+    pub folder_path: String,
+    pub url: String,
+    pub children: Vec<PlayableFile>,
+    pub item_count: u32,
+    pub completed_count: u32,
+    pub has_artifacts: bool,
+}
+
+fn parse_playlist_folder_name(name: &str) -> Option<(String, String)> {
+    let bracket = name.rfind(" [")?;
+    if !name.ends_with(']') {
+        return None;
+    }
+    let title = name[..bracket].trim();
+    let id = name[bracket + 2..name.len() - 1].trim();
+    if title.is_empty() || id.is_empty() || !id.starts_with("PL") {
+        return None;
+    }
+    Some((title.to_string(), id.to_string()))
+}
+
+fn parse_item_index_from_name(name: &str) -> Option<u32> {
+    let bytes = name.as_bytes();
+    let mut i = 0usize;
+    let mut value = 0u32;
+    let mut digits = 0usize;
+    while i < bytes.len() && bytes[i].is_ascii_digit() {
+        value = value
+            .saturating_mul(10)
+            .saturating_add((bytes[i] - b'0') as u32);
+        digits += 1;
+        i += 1;
+    }
+    if digits == 0 || i + 2 >= bytes.len() {
+        return None;
+    }
+    if &name[i..i + 3] != " - " {
+        return None;
+    }
+    Some(value)
+}
+
+fn title_from_numbered_filename(name: &str) -> String {
+    if let Some(idx) = parse_item_index_from_name(name) {
+        let prefix = format!("{idx:02} - ");
+        let alt = format!("{idx} - ");
+        if let Some(rest) = name.strip_prefix(&prefix).or_else(|| name.strip_prefix(&alt)) {
+            let stem = Path::new(rest)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or(rest);
+            return clean_display_title(stem);
+        }
+    }
+    title_from_path(Path::new(name))
+}
+
+fn dir_has_incomplete_artifacts(dir: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return false;
+    };
+    for entry in entries.flatten() {
+        let name = entry
+            .file_name()
+            .to_string_lossy()
+            .to_string();
+        if name.contains(".part") || is_ytdlp_fragment_name(&name) {
+            return true;
+        }
+    }
+    false
+}
+
+fn scan_playlist_folder(folder: &Path) -> Option<PartialPlaylistScan> {
+    let folder_name = folder.file_name()?.to_str()?;
+    let (playlist_title, playlist_id) = parse_playlist_folder_name(folder_name)?;
+    let has_artifacts = dir_has_incomplete_artifacts(folder);
+
+    let mut children = Vec::new();
+    let mut max_index = 0u32;
+    let entries = std::fs::read_dir(folder).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() || !is_media(&path) {
+            continue;
+        }
+        let fname = path.file_name()?.to_str()?;
+        let item_index = parse_item_index_from_name(fname)?;
+        max_index = max_index.max(item_index);
+        let audio_only = is_audio_path(&path) && !has_video_stream(&path);
+        children.push(PlayableFile {
+            path: path.to_string_lossy().into_owned(),
+            title: title_from_numbered_filename(fname),
+            item_index: Some(item_index),
+            is_audio: audio_only,
+        });
+    }
+
+    if children.is_empty() && !has_artifacts {
+        return None;
+    }
+
+    children.sort_by_key(|c| c.item_index.unwrap_or(0));
+    let completed_count = children.len() as u32;
+    let item_count = max_index.max(completed_count);
+
+    Some(PartialPlaylistScan {
+        playlist_title,
+        playlist_id: playlist_id.clone(),
+        folder_path: folder.to_string_lossy().into_owned(),
+        url: format!("https://www.youtube.com/playlist?list={playlist_id}"),
+        children,
+        item_count,
+        completed_count,
+        has_artifacts,
+    })
+}
+
+#[tauri::command]
+pub fn scan_partial_playlists(output_dir: String) -> Result<Vec<PartialPlaylistScan>, String> {
+    let root = PathBuf::from(&output_dir);
+    if !root.is_dir() {
+        return Ok(vec![]);
+    }
+
+    let mut results = Vec::new();
+    let entries = std::fs::read_dir(&root).map_err(|e| e.to_string())?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        if let Some(scan) = scan_playlist_folder(&path) {
+            results.push(scan);
+        }
+    }
+    results.sort_by(|a, b| a.playlist_title.cmp(&b.playlist_title));
+    Ok(results)
+}

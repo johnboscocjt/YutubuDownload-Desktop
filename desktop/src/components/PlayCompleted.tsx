@@ -5,6 +5,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   hasNativePlayer,
   nativePlayerControl,
+  nativePlayerAlive,
+  nativePlayerLoad,
   nativePlayerPaused,
   nativePlayerProgress,
   nativePlayerSeek,
@@ -28,6 +30,7 @@ import {
   type CompletedLibraryFilter,
 } from "../searchCompleted";
 import { entryDisplayTitle, entryMetaLabel, fileBasename } from "../history";
+import { loadSettings, saveSettings } from "../settings";
 import type { HistoryEntry, PlayableFile } from "../types";
 import PlayerProgressBar from "./PlayerProgressBar";
 
@@ -45,6 +48,26 @@ interface Props {
   onBackgroundPlaybackChange?: (active: boolean) => void;
 }
 
+function isTransientMpvError(message: string): boolean {
+  return (
+    message.includes("Could not reach mpv") ||
+    message.includes("Player is not running") ||
+    message.includes("Invalid mpv response")
+  );
+}
+
+function playlistTrackOptions(entry: HistoryEntry) {
+  if (entry.children?.length) return entry.children;
+  const count = entry.itemCount ?? 0;
+  if (count <= 1) return [];
+  return Array.from({ length: count }, (_, i) => ({
+    id: `${entry.id}-track-${i + 1}`,
+    itemIndex: i + 1,
+    title: `Video ${i + 1}`,
+  }));
+}
+
+const ALL_COMPLETED_LOADING_ID = "__all-completed__";
 const BOUNDS_SYNC_TOLERANCE = 2;
 const MIN_PLAYER_WIDTH = 120;
 const MIN_PLAYER_HEIGHT = 48;
@@ -103,6 +126,10 @@ function getPlayerBoundsFromRect(
       rect.right > window.innerWidth + 2);
 
   if (clipped) {
+    // Scrolled above the viewport — never pin embed to y=0 (that overlaps the page header).
+    if (rect.top < -2 || rect.left < -2) {
+      return HIDDEN_PLAYER_BOUNDS;
+    }
     return {
       x: Math.round(visLeft),
       y: Math.round(visTop),
@@ -135,6 +162,33 @@ function PlayerIconForward() {
     <svg viewBox="0 0 24 24" aria-hidden className="player-icon-svg">
       <path d="M13 7v10l7-5-7-5zm-1 0v2.5A6.5 6.5 0 0 0 5.5 16H4A8.5 8.5 0 0 1 12 7v0z" fill="currentColor" />
       <text x="4.5" y="15" fontSize="6" fontWeight="700" fill="currentColor">10</text>
+    </svg>
+  );
+}
+
+function PlayerIconSkipPrevious() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden className="player-icon-svg">
+      <path d="M7 6v12l8-6-8-6zm9 0v12h2V6h-2z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function PlayerIconSkipNext() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden className="player-icon-svg">
+      <path d="M17 18V6l-8 6 8 6zm-10 0V6H5v12h2z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function PlayerIconReplay() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden className="player-icon-svg">
+      <path
+        d="M12 6V3L7 8l5 5V9c2.76 0 5 2.24 5 5s-2.24 5-5 5-5-2.24-5-5H6c0 3.31 2.69 6 6 6s6-2.69 6-6-2.69-6-6-6z"
+        fill="currentColor"
+      />
     </svg>
   );
 }
@@ -224,6 +278,13 @@ export default function PlayCompleted({
   const [playerDuration, setPlayerDuration] = useState(0);
   const [playerVolume, setPlayerVolume] = useState(100);
   const [playerMuted, setPlayerMuted] = useState(false);
+  const [playbackEnded, setPlaybackEnded] = useState(false);
+  const [autoplayNext, setAutoplayNext] = useState(
+    () => loadSettings().playbackAutoplayNext
+  );
+  const [loopPlaylist, setLoopPlaylist] = useState(
+    () => loadSettings().playbackLoopPlaylist
+  );
   const [volumeHudVisible, setVolumeHudVisible] = useState(false);
   const [volumeHover, setVolumeHover] = useState(false);
   const [cinemaMode, setCinemaMode] = useState(false);
@@ -244,10 +305,38 @@ export default function PlayCompleted({
   const volumeHudTimerRef = useRef(0);
   const playInBackgroundRef = useRef(playInBackground);
   const panelVisibleRef = useRef(panelVisible);
+  const playbackEndedRef = useRef(false);
+  const autoplayNextRef = useRef(autoplayNext);
+  const loopPlaylistRef = useRef(loopPlaylist);
+  const currentIndexRef = useRef(currentIndex);
+  const queueLengthRef = useRef(queue.length);
+  const queueRef = useRef(queue);
+  const embedSessionRef = useRef(false);
+  const trackSwitchingRef = useRef(false);
+  const playerRestartRef = useRef(false);
+  const deadPlayerPollsRef = useRef(0);
+
+  useEffect(() => {
+    autoplayNextRef.current = autoplayNext;
+  }, [autoplayNext]);
+
+  useEffect(() => {
+    loopPlaylistRef.current = loopPlaylist;
+  }, [loopPlaylist]);
+
+  useEffect(() => {
+    currentIndexRef.current = currentIndex;
+  }, [currentIndex]);
+
+  useEffect(() => {
+    queueLengthRef.current = queue.length;
+    queueRef.current = queue;
+  }, [queue]);
 
   const current = queue[currentIndex] ?? null;
   const upNext = queue.slice(currentIndex + 1);
-  const showUpNext = current?.isPlaylist && upNext.length > 1;
+  const hasQueueNav = queue.length > 1;
+  const showUpNextList = hasQueueNav && current?.isPlaylist && upNext.length > 0 && upNext.length <= 8;
 
   useEffect(() => {
     playInBackgroundRef.current = playInBackground;
@@ -266,6 +355,7 @@ export default function PlayCompleted({
       });
     return () => {
       if (!playInBackgroundRef.current) {
+        embedSessionRef.current = false;
         void stopNativePlayer();
       }
     };
@@ -323,6 +413,16 @@ export default function PlayCompleted({
     []
   );
 
+  const scrollPlayerIntoView = useCallback(() => {
+    const wrap = playerWrapRef.current;
+    if (!wrap) return;
+    const main = wrap.closest(".main--play");
+    if (main instanceof HTMLElement) {
+      main.scrollTop = 0;
+    }
+    wrap.scrollIntoView({ block: "start", behavior: "instant" });
+  }, []);
+
   async function playEntry(entry: HistoryEntry, startAt = 0, playAll = true) {
     setLoadingId(entry.id);
     setError("");
@@ -333,7 +433,9 @@ export default function PlayCompleted({
         return;
       }
       setQueue(items);
+      embedSessionRef.current = false;
       setCurrentIndex(0);
+      window.requestAnimationFrame(() => scrollPlayerIntoView());
     } catch (e) {
       setError(String(e));
     } finally {
@@ -344,6 +446,33 @@ export default function PlayCompleted({
   async function playSingleItem(entry: HistoryEntry, itemIndex: number) {
     await playEntry(entry, itemIndex, false);
   }
+
+  async function playAllCompleted() {
+    if (!completed.length) return;
+    setLoadingId(ALL_COMPLETED_LOADING_ID);
+    setError("");
+    try {
+      const allItems: QueueItem[] = [];
+      for (const entry of completed) {
+        const items = await buildQueue(entry, 0, true);
+        allItems.push(...items);
+      }
+      if (!allItems.length) {
+        setError("No playable files found in completed downloads.");
+        return;
+      }
+      setQueue(allItems);
+      embedSessionRef.current = false;
+      setCurrentIndex(0);
+      window.requestAnimationFrame(() => scrollPlayerIntoView());
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoadingId(null);
+    }
+  }
+
+  const isLibraryLoading = loadingId != null;
 
   const handleVideoError = useCallback(async () => {
     if (!current || current.isAudio) return;
@@ -384,18 +513,45 @@ export default function PlayCompleted({
     setError("Built-in player could not load this file. Use Open in system player.");
   }, [current, blobSrc, playerMode]);
 
-  function handleEnded() {
-    if (currentIndex + 1 < queue.length) {
-      setCurrentIndex((i) => i + 1);
+  const resetPlaybackEnded = useCallback(() => {
+    playbackEndedRef.current = false;
+    setPlaybackEnded(false);
+  }, []);
+
+  const replayCurrent = useCallback(async () => {
+    resetPlaybackEnded();
+    try {
+      if (nativeActiveRef.current && playerModeRef.current === "embed") {
+        await nativePlayerSeek(0);
+        if (await nativePlayerPaused()) {
+          await nativePlayerControl("pause");
+        }
+        return;
+      }
+      const el = current?.isAudio ? audioRef.current : videoRef.current;
+      if (el) {
+        el.currentTime = 0;
+        await el.play();
+      }
+    } catch (e) {
+      if (!isTransientMpvError(String(e))) {
+        setError(String(e));
+      }
     }
+  }, [current?.isAudio, resetPlaybackEnded]);
+
+  const handlePlaybackEndedRef = useRef<() => void>(() => {});
+
+  function handleEnded() {
+    handlePlaybackEndedRef.current();
   }
 
   useEffect(() => {
     setBlobSrc("");
-    setNativeActive(false);
     setCinemaMode(false);
+    resetPlaybackEnded();
     if (preferEmbed) setPlayerMode("embed");
-  }, [current?.path, preferEmbed]);
+  }, [current?.path, preferEmbed, resetPlaybackEnded]);
 
   const controlsWakeThrottleRef = useRef(0);
   const lastBoundsKeyRef = useRef("");
@@ -425,15 +581,25 @@ export default function PlayCompleted({
         bounds: { ...bounds, visible: true },
       });
       setError("");
+      embedSessionRef.current = true;
+      setNativeActive(true);
+      deadPlayerPollsRef.current = 0;
       lastBoundsRef.current = null;
       lastBoundsKeyRef.current = "";
       const reveal = async () => {
         const b = getPlayerBounds();
         if (!b?.visible) return false;
-        await updateNativePlayerBounds({ bounds: b });
-        await nativePlayerControl("fitWindow");
-        setNativeActive(true);
-        return true;
+        try {
+          await updateNativePlayerBounds({ bounds: b });
+          try {
+            await nativePlayerControl("fitWindow");
+          } catch {
+            // mpv IPC may still be starting; embed is already visible
+          }
+          return true;
+        } catch {
+          return false;
+        }
       };
       if (await reveal()) return "ok";
       window.setTimeout(() => {
@@ -444,18 +610,121 @@ export default function PlayCompleted({
       }, 120);
       return "ok";
     } catch (e) {
+      embedSessionRef.current = false;
       setNativeActive(false);
       const msg = String(e);
       if (msg.includes("embed_unavailable")) {
         setError(
           "In-app mpv player could not start (needs X11). Use Open in system player below."
         );
-      } else {
+      } else if (!isTransientMpvError(msg)) {
         setError(msg);
       }
       return "fail";
     }
   }, [current, playerMode, getPlayerBounds]);
+
+  const restartNativePlayback = useCallback(async () => {
+    if (playerRestartRef.current || !current || current.isAudio || playerMode !== "embed") {
+      return;
+    }
+    playerRestartRef.current = true;
+    embedSessionRef.current = false;
+    setNativeActive(false);
+    try {
+      await stopNativePlayer();
+      await startNative();
+    } finally {
+      playerRestartRef.current = false;
+    }
+  }, [current, playerMode, startNative]);
+
+  const switchToTrack = useCallback(
+    async (nextIndex: number) => {
+      if (nextIndex < 0 || nextIndex >= queueLengthRef.current) return;
+      const item = queueRef.current[nextIndex];
+      if (!item) return;
+
+      trackSwitchingRef.current = true;
+      resetPlaybackEnded();
+      setCurrentIndex(nextIndex);
+
+      if (item.isAudio || playerModeRef.current !== "embed") {
+        trackSwitchingRef.current = false;
+        embedSessionRef.current = false;
+        return;
+      }
+
+      if (embedSessionRef.current) {
+        try {
+          await nativePlayerLoad(item.path);
+          const alive = await nativePlayerAlive();
+          if (!alive) {
+            throw new Error("Player is not running.");
+          }
+          setPlayerPosition(0);
+          setPlayerDuration(0);
+          setPlayerPaused(false);
+          setNativeActive(true);
+          const bounds = getPlayerBounds();
+          if (bounds?.visible) {
+            await updateNativePlayerBounds({ bounds });
+          }
+          trackSwitchingRef.current = false;
+          return;
+        } catch {
+          embedSessionRef.current = false;
+          trackSwitchingRef.current = false;
+          void restartNativePlayback();
+          return;
+        }
+      }
+
+      trackSwitchingRef.current = false;
+      void startNative();
+    },
+    [getPlayerBounds, resetPlaybackEnded, startNative, restartNativePlayback]
+  );
+
+  const handlePlaybackEnded = useCallback(() => {
+    if (playbackEndedRef.current || trackSwitchingRef.current) return;
+    playbackEndedRef.current = true;
+    setPlaybackEnded(true);
+
+    const idx = currentIndexRef.current;
+    const total = queueLengthRef.current;
+
+    if (autoplayNextRef.current) {
+      if (idx + 1 < total) {
+        void switchToTrack(idx + 1);
+        return;
+      }
+      if (loopPlaylistRef.current && total > 1) {
+        void switchToTrack(0);
+        return;
+      }
+    }
+
+    if (loopPlaylistRef.current && total === 1) {
+      playbackEndedRef.current = false;
+      setPlaybackEnded(false);
+      window.queueMicrotask(() => {
+        void replayCurrent();
+      });
+    }
+  }, [replayCurrent, switchToTrack]);
+
+  useEffect(() => {
+    handlePlaybackEndedRef.current = handlePlaybackEnded;
+  }, [handlePlaybackEnded]);
+
+  function goToPreviousTrack() {
+    if (currentIndex > 0) void switchToTrack(currentIndex - 1);
+  }
+
+  function goToNextTrack() {
+    if (currentIndex + 1 < queue.length) void switchToTrack(currentIndex + 1);
+  }
 
   const syncNativeBounds = useCallback(
     async (options?: { applyFill?: boolean }) => {
@@ -523,6 +792,34 @@ export default function PlayCompleted({
     [nativeActive, playerMode, cinemaMode, syncNativeBounds]
   );
 
+  useEffect(() => {
+    if (!queue.length || !panelVisible) return;
+
+    scrollPlayerIntoView();
+    lastBoundsRef.current = null;
+    lastBoundsKeyRef.current = "";
+
+    const timers = [0, 120, 320, 600].map((ms) =>
+      window.setTimeout(() => {
+        scrollPlayerIntoView();
+        lastBoundsRef.current = null;
+        scheduleSyncBounds(true);
+        void forceRevealEmbed();
+      }, ms)
+    );
+
+    return () => {
+      for (const id of timers) window.clearTimeout(id);
+    };
+  }, [
+    queue.length,
+    current?.path,
+    panelVisible,
+    scrollPlayerIntoView,
+    scheduleSyncBounds,
+    forceRevealEmbed,
+  ]);
+
   const startScrollBoundsLoop = useCallback(() => {
     if (!nativeActive || playerMode !== "embed" || cinemaMode || !panelVisibleRef.current) {
       return;
@@ -549,12 +846,14 @@ export default function PlayCompleted({
 
   useEffect(() => {
     if (!current) {
+      embedSessionRef.current = false;
       void stopNativePlayer();
       setNativeActive(false);
       return;
     }
 
     if (current.isAudio || playerMode !== "embed") {
+      embedSessionRef.current = false;
       void stopNativePlayer();
       setNativeActive(false);
       return;
@@ -566,20 +865,54 @@ export default function PlayCompleted({
 
     const tryStart = async () => {
       if (cancelled) return;
+      if (trackSwitchingRef.current) {
+        window.setTimeout(() => void tryStart(), 120);
+        return;
+      }
+
+      if (embedSessionRef.current) {
+        const alive = await nativePlayerAlive();
+        if (alive) {
+          setNativeActive(true);
+          const bounds = getPlayerBounds();
+          if (bounds?.visible) {
+            void updateNativePlayerBounds({ bounds: { ...bounds, visible: true } });
+            void forceRevealEmbed();
+          }
+          return;
+        }
+        embedSessionRef.current = false;
+        setNativeActive(false);
+        await stopNativePlayer();
+      }
+
       attempts += 1;
       const result = await startNative();
       if (cancelled) return;
       if (result === "retry" && attempts < maxAttempts) {
         window.setTimeout(() => void tryStart(), 120);
+        return;
+      }
+      if (result === "fail" && attempts < 3) {
+        embedSessionRef.current = false;
+        await stopNativePlayer();
+        window.setTimeout(() => void tryStart(), 250);
+        return;
+      }
+      if (!nativeActiveRef.current && !cancelled) {
+        setError(
+          "In-app player could not start. Try again or use Open in system player below."
+        );
       }
     };
 
+    scrollPlayerIntoView();
     let timer = window.setTimeout(() => void tryStart(), 200);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [current?.path, current?.isAudio, playerMode, startNative]);
+  }, [current?.path, current?.isAudio, playerMode, startNative, getPlayerBounds, forceRevealEmbed, scrollPlayerIntoView]);
 
   useEffect(() => {
     if (!nativeActive || playerMode !== "embed" || cinemaMode || !panelVisible) return;
@@ -782,7 +1115,9 @@ export default function PlayCompleted({
           showVolumeHud();
         }
       } catch (e) {
-        setError(String(e));
+        if (!isTransientMpvError(String(e))) {
+          setError(String(e));
+        }
       }
     },
     [showVolumeHud]
@@ -799,15 +1134,33 @@ export default function PlayCompleted({
   }, [nativeActive, playerMode]);
 
   const refreshPlayerProgress = useCallback(async () => {
-    if (!nativeActive || playerMode !== "embed") return;
+    if (!nativeActive || playerMode !== "embed" || trackSwitchingRef.current) return;
     try {
-      const { position, duration } = await nativePlayerProgress();
+      const { position, duration, ended } = await nativePlayerProgress();
       setPlayerPosition(position);
       setPlayerDuration(duration);
+
+      const alive = await nativePlayerAlive();
+      if (!alive) {
+        deadPlayerPollsRef.current += 1;
+        if (deadPlayerPollsRef.current >= 2 && !playerRestartRef.current) {
+          deadPlayerPollsRef.current = 0;
+          void restartNativePlayback();
+        }
+        return;
+      }
+      deadPlayerPollsRef.current = 0;
+
+      if (
+        !playbackEndedRef.current &&
+        (ended || (duration > 0.5 && position >= Math.max(0, duration - 0.35)))
+      ) {
+        handlePlaybackEnded();
+      }
     } catch {
-      // ignore polling glitches
+      // ignore transient IPC glitches during polling
     }
-  }, [nativeActive, playerMode]);
+  }, [nativeActive, playerMode, handlePlaybackEnded, restartNativePlayback]);
 
   const refreshPlayerVolume = useCallback(async () => {
     if (!nativeActive || playerMode !== "embed") return;
@@ -830,7 +1183,9 @@ export default function PlayCompleted({
         showVolumeHud();
         wakeControls(true);
       } catch (e) {
-        setError(String(e));
+        if (!isTransientMpvError(String(e))) {
+          setError(String(e));
+        }
       }
     },
     [showVolumeHud, wakeControls]
@@ -843,7 +1198,9 @@ export default function PlayCompleted({
         setPlayerPosition(seconds);
         wakeControls(true);
       } catch (e) {
-        setError(String(e));
+        if (!isTransientMpvError(String(e))) {
+          setError(String(e));
+        }
       }
     },
     [wakeControls]
@@ -888,15 +1245,44 @@ export default function PlayCompleted({
       switch (event.key) {
         case " ":
         case "k":
+          if (playbackEnded) {
+            event.preventDefault();
+            void replayCurrent();
+            return;
+          }
           action = "pause";
           break;
         case "ArrowLeft":
         case "j":
+          if (event.shiftKey && hasQueueNav && currentIndex > 0) {
+            event.preventDefault();
+            goToPreviousTrack();
+            return;
+          }
           action = "seekBack";
           break;
         case "ArrowRight":
         case "l":
+          if (event.shiftKey && hasQueueNav && currentIndex < queue.length - 1) {
+            event.preventDefault();
+            goToNextTrack();
+            return;
+          }
           action = "seekForward";
+          break;
+        case "[":
+          if (hasQueueNav && currentIndex > 0) {
+            event.preventDefault();
+            goToPreviousTrack();
+            return;
+          }
+          break;
+        case "]":
+          if (hasQueueNav && currentIndex < queue.length - 1) {
+            event.preventDefault();
+            goToNextTrack();
+            return;
+          }
           break;
         case "f":
           toggleCinema();
@@ -933,7 +1319,21 @@ export default function PlayCompleted({
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [nativeActive, playerMode, panelVisible, sendPlayerAction, cinemaMode, toggleCinema, getPlayerBounds, wakeControls, setControlsActive]);
+  }, [
+    nativeActive,
+    playerMode,
+    panelVisible,
+    sendPlayerAction,
+    cinemaMode,
+    toggleCinema,
+    wakeControls,
+    setControlsActive,
+    hasQueueNav,
+    currentIndex,
+    queue.length,
+    playbackEnded,
+    replayCurrent,
+  ]);
 
   useEffect(() => {
     if (!nativeActive || playerMode !== "embed") return;
@@ -1255,6 +1655,18 @@ export default function PlayCompleted({
                       </button>
                     </div>
                     <div className="player-controls-cluster">
+                      {hasQueueNav && (
+                        <button
+                          type="button"
+                          className="player-ctrl-icon"
+                          title="Previous video (Shift+← or [)"
+                          aria-label="Previous video"
+                          disabled={currentIndex === 0}
+                          onClick={goToPreviousTrack}
+                        >
+                          <PlayerIconSkipPrevious />
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="player-ctrl-icon"
@@ -1266,12 +1678,30 @@ export default function PlayCompleted({
                       </button>
                       <button
                         type="button"
-                        className="player-ctrl-icon player-ctrl-icon--primary"
-                        title={playerPaused ? "Play (Space)" : "Pause (Space)"}
-                        aria-label={playerPaused ? "Play" : "Pause"}
-                        onClick={() => void sendPlayerAction("pause")}
+                        className={`player-ctrl-icon player-ctrl-icon--primary${
+                          playbackEnded ? " player-ctrl-icon--replay" : ""
+                        }`}
+                        title={
+                          playbackEnded
+                            ? "Replay"
+                            : playerPaused
+                              ? "Play (Space)"
+                              : "Pause (Space)"
+                        }
+                        aria-label={playbackEnded ? "Replay" : playerPaused ? "Play" : "Pause"}
+                        onClick={() =>
+                          playbackEnded
+                            ? void replayCurrent()
+                            : void sendPlayerAction("pause")
+                        }
                       >
-                        {playerPaused ? <PlayerIconPlay /> : <PlayerIconPause />}
+                        {playbackEnded ? (
+                          <PlayerIconReplay />
+                        ) : playerPaused ? (
+                          <PlayerIconPlay />
+                        ) : (
+                          <PlayerIconPause />
+                        )}
                       </button>
                       <button
                         type="button"
@@ -1282,6 +1712,18 @@ export default function PlayCompleted({
                       >
                         <PlayerIconForward />
                       </button>
+                      {hasQueueNav && (
+                        <button
+                          type="button"
+                          className="player-ctrl-icon"
+                          title="Next video (Shift+→ or ])"
+                          aria-label="Next video"
+                          disabled={currentIndex >= queue.length - 1}
+                          onClick={goToNextTrack}
+                        >
+                          <PlayerIconSkipNext />
+                        </button>
+                      )}
                     </div>
                     <button
                       type="button"
@@ -1299,12 +1741,31 @@ export default function PlayCompleted({
                   </div>
                 </div>
                 <p className="player-controls-hint">
-                  {cinemaMode
-                    ? "Space · ←/→ seek · Esc or double-click exit · M mute"
-                    : "Space pause · ←/→ seek · ↑/↓ volume · F or double-click expand · M mute"}
+                  {playbackEnded
+                    ? "Ended — click Replay or press Space"
+                    : cinemaMode
+                      ? hasQueueNav
+                        ? "Space · ←/→ seek · Shift+←/→ or [ ] track · Esc exit"
+                        : "Space · ←/→ seek · Esc or double-click exit · M mute"
+                      : hasQueueNav
+                        ? "Space pause · ←/→ seek · Shift+←/→ or [ ] track · F expand · M mute"
+                        : "Space pause · ←/→ seek · ↑/↓ volume · F or double-click expand · M mute"}
                 </p>
               </div>
             )}
+            {!cinemaMode && playbackEnded && (
+              <div className="player-ended-banner">
+                <span>Finished</span>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => void replayCurrent()}
+                >
+                  Replay
+                </button>
+              </div>
+            )}
+
             {!cinemaMode && (
             <div className="player-now">
               <strong>{fileBasename(current.path) || current.title}</strong>
@@ -1317,13 +1778,32 @@ export default function PlayCompleted({
                   {queue.length > 1 ? ` · ${currentIndex + 1} of ${queue.length}` : ""}
                 </span>
               )}
+              {hasQueueNav && (
+                <label className="player-track-picker">
+                  <span className="sr-only">Jump to video in playlist</span>
+                  <select
+                    className="play-track-select"
+                    value={currentIndex}
+                    onChange={(e) => void switchToTrack(Number(e.target.value))}
+                  >
+                    {queue.map((item, i) => (
+                      <option key={`${item.path}-${i}`} value={i}>
+                        {item.itemIndex != null
+                          ? `${String(item.itemIndex).padStart(2, "0")} — `
+                          : ""}
+                        {item.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               {!current.isPlaylist && current.entryTitle && current.entryTitle !== (fileBasename(current.path) || current.title) && (
                 <span className="hint">{current.entryTitle}</span>
               )}
             </div>
             )}
 
-            {!cinemaMode && showUpNext && (
+            {!cinemaMode && showUpNextList && (
               <div className="player-upnext">
                 <h3>Up next</h3>
                 <ul className="upnext-list">
@@ -1332,7 +1812,7 @@ export default function PlayCompleted({
                       <button
                         type="button"
                         className="upnext-item"
-                        onClick={() => setCurrentIndex(currentIndex + 1 + i)}
+                        onClick={() => void switchToTrack(currentIndex + 1 + i)}
                       >
                         {item.itemIndex != null && (
                           <span className="history-child-index">
@@ -1347,23 +1827,23 @@ export default function PlayCompleted({
               </div>
             )}
 
-            {!cinemaMode && queue.length > 1 && (
+            {!cinemaMode && hasQueueNav && (
               <div className="player-queue-nav">
                 <button
                   type="button"
                   className="btn btn-ghost btn-sm"
                   disabled={currentIndex === 0}
-                  onClick={() => setCurrentIndex((i) => i - 1)}
+                  onClick={goToPreviousTrack}
                 >
-                  Previous
+                  Previous video
                 </button>
                 <button
                   type="button"
                   className="btn btn-ghost btn-sm"
                   disabled={currentIndex >= queue.length - 1}
-                  onClick={() => setCurrentIndex((i) => i + 1)}
+                  onClick={goToNextTrack}
                 >
-                  Next
+                  Next video
                 </button>
               </div>
             )}
@@ -1419,25 +1899,67 @@ export default function PlayCompleted({
             )}
           </div>
 
-          <div className="play-library-filters" role="group" aria-label="Filter completed downloads">
-            {(
-              [
-                ["all", "All"],
-                ["playlist", "Playlists"],
-                ["single", "Singles"],
-                ["audio", "Audio"],
-              ] as const
-            ).map(([id, label]) => (
+          <div className="play-library-filter-row">
+            <div className="play-library-filters" role="group" aria-label="Filter completed downloads">
+              {(
+                [
+                  ["all", "All"],
+                  ["playlist", "Playlists"],
+                  ["single", "Singles"],
+                  ["audio", "Audio"],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={`play-library-filter${libraryFilter === id ? " play-library-filter--active" : ""}`}
+                  aria-pressed={libraryFilter === id}
+                  onClick={() => setLibraryFilter(id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {completed.length > 0 && (
               <button
-                key={id}
                 type="button"
-                className={`play-library-filter${libraryFilter === id ? " play-library-filter--active" : ""}`}
-                aria-pressed={libraryFilter === id}
-                onClick={() => setLibraryFilter(id)}
+                className="btn btn-primary btn-sm play-all-completed-btn"
+                disabled={isLibraryLoading}
+                onClick={() => void playAllCompleted()}
               >
-                {label}
+                {loadingId === ALL_COMPLETED_LOADING_ID
+                  ? "Loading…"
+                  : "Play all completed"}
               </button>
-            ))}
+            )}
+          </div>
+
+          <div className="play-playback-options" role="group" aria-label="Playback options">
+            <label className="play-playback-toggle">
+              <input
+                type="checkbox"
+                checked={autoplayNext}
+                onChange={(e) => {
+                  const next = e.target.checked;
+                  setAutoplayNext(next);
+                  saveSettings({ playbackAutoplayNext: next });
+                }}
+              />
+              <span>Autoplay next</span>
+            </label>
+            <label className="play-playback-toggle">
+              <input
+                type="checkbox"
+                checked={loopPlaylist}
+                onChange={(e) => {
+                  const next = e.target.checked;
+                  setLoopPlaylist(next);
+                  saveSettings({ playbackLoopPlaylist: next });
+                }}
+              />
+              <span>Loop playlist / queue</span>
+            </label>
           </div>
 
           {completed.length > 0 && (
@@ -1502,30 +2024,41 @@ export default function PlayCompleted({
                         <button
                           type="button"
                           className="btn btn-primary btn-sm"
-                          disabled={loadingId === entry.id}
+                          disabled={isLibraryLoading}
                           onClick={() => playEntry(entry, 0, true)}
                         >
                           Play all
                         </button>
-                        {entry.children?.map((child) => (
-                          <button
-                            key={child.id}
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            disabled={loadingId === entry.id}
-                            onClick={() => playSingleItem(entry, child.itemIndex)}
-                            title={child.title}
-                          >
-                            {String(child.itemIndex).padStart(2, "0")}
-                          </button>
-                        ))}
+                        {playlistTrackOptions(entry).length > 0 && (
+                          <label className="play-track-picker">
+                            <span className="sr-only">Play one video from playlist</span>
+                            <select
+                              className="play-track-select"
+                              value=""
+                              disabled={isLibraryLoading}
+                              onChange={(e) => {
+                                const itemIndex = Number(e.target.value);
+                                if (itemIndex > 0) {
+                                  void playSingleItem(entry, itemIndex);
+                                }
+                              }}
+                            >
+                              <option value="">Pick video…</option>
+                              {playlistTrackOptions(entry).map((child) => (
+                                <option key={child.id} value={child.itemIndex}>
+                                  {String(child.itemIndex).padStart(2, "0")} — {child.title}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
                       </>
                     ) : (
                       <>
                         <button
                           type="button"
                           className="btn btn-primary btn-sm"
-                          disabled={loadingId === entry.id}
+                          disabled={isLibraryLoading}
                           onClick={() => playEntry(entry)}
                         >
                           Play

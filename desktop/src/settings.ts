@@ -2,10 +2,16 @@ const SETTINGS_KEY = "yutubu-settings";
 
 export interface AppSettings {
   playInBackground: boolean;
+  outputDir: string;
+  playbackAutoplayNext: boolean;
+  playbackLoopPlaylist: boolean;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
   playInBackground: false,
+  outputDir: "",
+  playbackAutoplayNext: true,
+  playbackLoopPlaylist: false,
 };
 
 export function loadSettings(): AppSettings {
@@ -15,6 +21,12 @@ export function loadSettings(): AppSettings {
     const parsed = JSON.parse(raw) as Partial<AppSettings>;
     return {
       playInBackground: Boolean(parsed.playInBackground),
+      outputDir: typeof parsed.outputDir === "string" ? parsed.outputDir : "",
+      playbackAutoplayNext:
+        parsed.playbackAutoplayNext !== undefined
+          ? Boolean(parsed.playbackAutoplayNext)
+          : DEFAULT_SETTINGS.playbackAutoplayNext,
+      playbackLoopPlaylist: Boolean(parsed.playbackLoopPlaylist),
     };
   } catch {
     return { ...DEFAULT_SETTINGS };

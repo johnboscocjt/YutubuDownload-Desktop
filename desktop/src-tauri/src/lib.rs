@@ -16,7 +16,7 @@ pub fn run() {
     linux_media_env::configure();
     dbus_bootstrap::bootstrap();
 
-    let paths = YtdPaths::new();
+    let paths = YtdPaths::desktop();
     let _ = paths.ensure_dirs();
     let downloads = DownloadManager::new(paths.clone());
 
@@ -56,10 +56,12 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::check_dependencies_cmd,
             commands::refresh_cookies,
+            commands::default_download_dir,
             commands::list_qualities,
             commands::resolve_quality,
             commands::fetch_metadata_cmd,
             commands::probe_video_cmd,
+            commands::list_playlist_titles_cmd,
             commands::start_download,
             commands::cancel_download,
             commands::pause_download,
@@ -69,11 +71,14 @@ pub fn run() {
             commands::list_documentation,
             commands::read_documentation,
             commands::resolve_playable_files,
+            commands::scan_partial_playlists,
             commands::stage_media_for_playback,
             commands::probe_playback_prep,
             commands::open_media_file,
             native_player::has_native_player_cmd,
             native_player::start_native_player,
+            native_player::native_player_load,
+            native_player::native_player_alive,
             native_player::update_native_player_bounds,
             native_player::stop_native_player_cmd,
             native_player::native_player_control,

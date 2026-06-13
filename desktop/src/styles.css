@@ -337,6 +337,15 @@ select:focus {
   font-size: 0.78rem;
 }
 
+.hint--active {
+  color: var(--accent);
+}
+
+.desktop-value-hint {
+  margin-bottom: 1rem;
+  line-height: 1.45;
+}
+
 .meta {
   background: var(--accent-dim);
   border: 1px solid rgba(0, 212, 170, 0.25);
@@ -446,10 +455,186 @@ select:focus {
   margin: 0.5rem 0;
 }
 
+.download-quality-result {
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 0.92rem;
+  margin: 0.35rem 0 0.5rem;
+}
+
 .status-error {
   color: #fca5a5;
   font-weight: 600;
   margin: 0.5rem 0;
+}
+
+.badge-playlist {
+  background: rgba(59, 130, 246, 0.2);
+  color: #93c5fd;
+}
+
+.badge-playlist-done {
+  background: rgba(0, 212, 170, 0.18);
+  color: var(--accent);
+}
+
+.progress-playlist-name {
+  margin: 0.2rem 0 0;
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+.playlist-progress-summary {
+  margin-bottom: 0.65rem;
+}
+
+.playlist-current-item {
+  margin-bottom: 0.65rem;
+}
+
+.playlist-current-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.progress-bar--thin {
+  height: 5px;
+}
+
+.playlist-folder-path {
+  margin-top: 0.25rem;
+}
+
+.playlist-files-panel {
+  margin: 0.75rem 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.playlist-files-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.85rem;
+  border: none;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.86rem;
+  cursor: pointer;
+  text-align: left;
+}
+
+.playlist-files-toggle:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.playlist-files-chevron {
+  color: var(--text-muted);
+}
+
+.playlist-files-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.35rem 0.65rem 0.65rem;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.playlist-file-item {
+  padding: 0.45rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.playlist-file-item:last-child {
+  border-bottom: none;
+}
+
+.playlist-file-head {
+  display: grid;
+  grid-template-columns: 2rem 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.25rem;
+  font-size: 0.82rem;
+}
+
+.playlist-file-index {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.playlist-file-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.playlist-file-percent {
+  color: var(--accent);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  min-width: 2.5rem;
+  text-align: right;
+}
+
+.playlist-file-item--pending .playlist-file-percent {
+  color: var(--text-muted);
+}
+
+.playlist-file-item--complete .playlist-file-percent {
+  color: #86efac;
+}
+
+.preview-badge {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.2);
+  color: #93c5fd;
+  margin-bottom: 0.35rem;
+}
+
+.preview-meta-id {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.preview-folder {
+  margin-top: 0.35rem;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.preview-folder code {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+}
+
+.hint-inline {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+}
+
+.preview-folder-path {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .log-toggle-row {
@@ -991,6 +1176,11 @@ select:focus {
   color: var(--text-muted);
 }
 
+.history-status-incomplete {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fbbf24;
+}
+
 .history-status-error {
   color: #fca5a5;
 }
@@ -1363,6 +1553,16 @@ select:focus {
 
 .player-ctrl-icon:active {
   transform: scale(0.94);
+}
+
+.player-ctrl-icon:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.player-ctrl-icon:disabled:hover {
+  background: transparent;
 }
 
 .player-ctrl-icon--primary {
@@ -1772,6 +1972,65 @@ select:focus {
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.play-library-filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.play-all-completed-btn {
+  flex-shrink: 0;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.play-playback-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+}
+
+.play-playback-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.play-playback-toggle input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.player-ended-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin: 0.35rem 0 0.75rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 212, 170, 0.25);
+  background: rgba(0, 212, 170, 0.08);
+  color: var(--text);
+  font-size: 0.88rem;
+}
+
+.player-ctrl-icon--replay {
+  background: linear-gradient(135deg, #f59e0b, #ef4444);
+  color: #fff;
+  box-shadow: 0 8px 22px rgba(245, 158, 11, 0.28);
 }
 
 .play-library-filter {
@@ -1851,6 +2110,63 @@ select:focus {
   flex-wrap: wrap;
   gap: 0.35rem;
   justify-content: flex-end;
+  align-items: center;
+}
+
+.play-track-picker {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.play-track-select {
+  max-width: min(320px, 72vw);
+  min-width: 10rem;
+  padding: 0.4rem 2rem 0.4rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.28);
+  color: var(--text);
+  font-size: 0.8rem;
+  line-height: 1.3;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2394a3b8' d='M1 1.5 6 6.5 11 1.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+}
+
+.play-track-select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.play-track-select:focus {
+  outline: none;
+  border-color: rgba(0, 212, 170, 0.55);
+  box-shadow: 0 0 0 3px rgba(0, 212, 170, 0.12);
+}
+
+.player-track-picker {
+  display: block;
+  margin-top: 0.45rem;
+}
+
+.player-track-picker .play-track-select {
+  width: 100%;
+  max-width: 100%;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .badge-paused {

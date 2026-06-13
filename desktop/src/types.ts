@@ -31,6 +31,7 @@ export interface QualityResolution {
 
 export interface MetadataInfo {
   video_id?: string;
+  playlist_id?: string;
   title?: string;
   duration?: string;
   thumbnail_url?: string;
@@ -51,6 +52,14 @@ export interface DownloadJobConfig {
   concurrentFragments: number;
   skipQualityCheck?: boolean;
   forceRedownload?: boolean;
+}
+
+export interface PlaylistTrackItem {
+  itemIndex: number;
+  title: string;
+  percent: number;
+  status: "pending" | "downloading" | "complete";
+  filePath?: string;
 }
 
 export interface ProgressEvent {
@@ -88,12 +97,13 @@ export interface HistoryEntry {
   url: string;
   title: string;
   thumbnailUrl?: string;
-  status: "complete" | "cancelled" | "error";
+  status: "complete" | "cancelled" | "error" | "incomplete";
   finishedAt: string;
   outputDir: string;
   isPlaylist?: boolean;
   isMp3?: boolean;
   itemCount?: number;
+  requestedHeight?: number;
   filePath?: string;
   children?: HistoryChild[];
 }

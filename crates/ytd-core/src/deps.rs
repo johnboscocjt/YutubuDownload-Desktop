@@ -187,6 +187,77 @@ pub fn common_ytdlp_args(cookie_file: &std::path::Path) -> Vec<String> {
     args
 }
 
+const YTDLP_PROBE_TIMEOUT_SECS: u64 = 15;
+
+fn run_command_with_timeout(program: &str, args: &[String]) -> Option<String> {
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    let program = program.to_string();
+    let args = args.to_vec();
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let out = Command::new(&program)
+            .args(&args)
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+            .filter(|s| !s.trim().is_empty());
+        let _ = tx.send(out);
+    });
+    rx.recv_timeout(Duration::from_secs(YTDLP_PROBE_TIMEOUT_SECS))
+        .ok()
+        .flatten()
+}
+
+fn ytdlp_run_inner(
+    cookie_file: Option<&std::path::Path>,
+    playlist: bool,
+    url: &str,
+    extra_args: &[&str],
+) -> Option<String> {
+    let program = ytdlp_program().ok()?;
+    let mut args = match cookie_file {
+        Some(c) => common_ytdlp_args(c),
+        None => {
+            let mut a = vec![
+                "--no-warnings".into(),
+                "--socket-timeout".into(),
+                "10".into(),
+                "--retries".into(),
+                "2".into(),
+            ];
+            a.extend(js_runtime_args());
+            a
+        }
+    };
+    args.push("--quiet".into());
+    args.push(
+        if playlist {
+            "--yes-playlist".into()
+        } else {
+            "--no-playlist".into()
+        },
+    );
+    for a in extra_args {
+        args.push((*a).into());
+    }
+    args.push(url.into());
+    run_command_with_timeout(&program, &args)
+}
+
+/// Run yt-dlp like the terminal script: cookies first, then fallback, 15s cap per attempt.
+pub fn ytdlp_probe_output(
+    paths: &crate::paths::YtdPaths,
+    url: &str,
+    playlist: bool,
+    extra_args: &[&str],
+) -> Option<String> {
+    ytdlp_run_inner(Some(&paths.cookie_file), playlist, url, extra_args)
+        .or_else(|| ytdlp_run_inner(None, playlist, url, extra_args))
+}
+
 // Lightweight which implementation to avoid extra dep
 mod which {
     use std::path::PathBuf;

@@ -17,6 +17,16 @@ pub async fn refresh_cookies(state: State<'_, SharedState>, force: bool) -> Resu
 }
 
 #[tauri::command]
+pub async fn default_download_dir(state: State<'_, SharedState>) -> Result<String, String> {
+    let guard = state.lock().await;
+    Ok(guard
+        .paths
+        .default_download_dir()
+        .to_string_lossy()
+        .into_owned())
+}
+
+#[tauri::command]
 pub async fn open_output_folder(app: tauri::AppHandle, path: String) -> Result<(), String> {
     app.opener()
         .open_path(path, None::<&str>)

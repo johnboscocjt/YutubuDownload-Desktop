@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { homeDir } from "@tauri-apps/api/path";
 import {
   cancelDownload,
   checkDependencies,
+  defaultDownloadDir,
   fetchMetadata,
+  listPlaylistTitles,
   openMediaFile,
   openFileLocation,
   openOutputFolder,
   pauseDownload,
   probeVideo,
+  resolveQuality,
   refreshCookies,
   resumeDownload,
   resolvePlayableFiles,
@@ -28,10 +30,83 @@ import type {
   DownloadCompleteEvent,
   HistoryEntry,
   MetadataInfo,
+  PlaylistTrackItem,
   ProgressEvent,
+  QualityResolution,
 } from "./types";
+import {
+  qualityInfoFromResolution,
+  type DownloadQualityInfo,
+} from "./downloadQuality";
+import {
+  buildHistoryEntryFromDownload,
+  reconcilePartialPlaylists,
+} from "./incompletePlaylists";
+import {
+  buildPlaylistTracksFromTitles,
+  mergePlaylistProgress,
+  playlistDisplayTitle,
+  playlistFolderPath,
+  resolveTrackTitle,
+} from "./playlistProgress";
 
 const STANDARD = [2160, 1440, 1080, 720, 480, 360];
+
+function looksLikeYoutubeUrl(url: string): boolean {
+  const trimmed = url.trim();
+  return /youtu(\.be|be\.com)/i.test(trimmed) && trimmed.length > 12;
+}
+
+function extractPlaylistId(url: string): string | null {
+  const match = url.match(/[?&]list=([A-Za-z0-9_-]+)/i);
+  return match ? match[1] : null;
+}
+
+function normalizeYoutubeUrl(url: string): string {
+  const trimmed = url.trim();
+  const videoMatch = trimmed.match(/(?:v=|youtu\.be\/)([^&?/]{11})/i);
+  const videoId = videoMatch ? videoMatch[1] : null;
+  const playlistId = extractPlaylistId(trimmed);
+
+  if (videoId && playlistId) {
+    return `https://www.youtube.com/watch?v=${videoId}&list=${playlistId}`;
+  }
+  if (videoId) return `https://www.youtube.com/watch?v=${videoId}`;
+  if (playlistId) return `https://www.youtube.com/playlist?list=${playlistId}`;
+  return trimmed;
+}
+
+function instantMetadataFromUrl(url: string, isPlaylist: boolean): MetadataInfo | null {
+  const probeUrl = normalizeYoutubeUrl(url);
+  const playlistId = extractPlaylistId(probeUrl);
+  const videoMatch = probeUrl.match(/(?:v=|youtu\.be\/)([^&?/]{11})/i);
+  const videoId = videoMatch?.[1];
+
+  if (isPlaylist && playlistId) {
+    return {
+      video_id: videoId,
+      playlist_id: playlistId,
+      title: undefined,
+      duration: undefined,
+      thumbnail_url: videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : undefined,
+      is_playlist: true,
+      playlist_title: undefined,
+      entry_count: undefined,
+    };
+  }
+
+  if (!videoId) return null;
+  return {
+    video_id: videoId,
+    playlist_id: playlistId ?? undefined,
+    title: undefined,
+    duration: undefined,
+    thumbnail_url: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+    is_playlist: isPlaylist,
+    playlist_title: undefined,
+    entry_count: undefined,
+  };
+}
 
 type Tab = "download" | "play" | "history" | "setup" | "settings" | "docs";
 
@@ -53,12 +128,14 @@ export default function App() {
   const [height, setHeight] = useState(720);
   const [qualities, setQualities] = useState<number[]>(STANDARD);
   const [qualityMsg, setQualityMsg] = useState("");
+  const [qualityResolution, setQualityResolution] = useState<QualityResolution | null>(null);
+  const [downloadQuality, setDownloadQuality] = useState<DownloadQualityInfo | null>(null);
   const [outputDir, setOutputDir] = useState("");
   const [metadata, setMetadata] = useState<MetadataInfo | null>(null);
   const [busy, setBusy] = useState(false);
+  const [probing, setProbing] = useState(false);
   const [preparing, setPreparing] = useState(false);
   const [preparingMessage, setPreparingMessage] = useState<string | null>(null);
-  const [qualityVerified, setQualityVerified] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
   const [progress, setProgress] = useState<ProgressEvent | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
@@ -70,6 +147,9 @@ export default function App() {
   );
   const [backgroundPlaybackActive, setBackgroundPlaybackActive] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [playlistTracks, setPlaylistTracks] = useState<PlaylistTrackItem[]>([]);
+  const [playlistTotal, setPlaylistTotal] = useState<number | null>(null);
+  const playlistTracksRef = useRef(playlistTracks);
   const [history, setHistory] = useState<HistoryEntry[]>(() => loadHistory());
   const [activeDownload, setActiveDownload] = useState<{
     url: string;
@@ -78,7 +158,9 @@ export default function App() {
     isPlaylist: boolean;
     isMp3: boolean;
     playlistTitle?: string;
+    playlistId?: string;
     entryCount?: number;
+    requestedHeight?: number;
   } | null>(null);
   const activeDownloadRef = useRef(activeDownload);
   const progressRef = useRef(progress);
@@ -86,6 +168,19 @@ export default function App() {
     Map<number, { title: string; filePath?: string }>
   >(new Map());
   const lastOutputFileRef = useRef<string | undefined>(undefined);
+  const probeRequestRef = useRef(0);
+  const heightRef = useRef(height);
+  const availableHeightsRef = useRef<number[]>([]);
+  const lastAutoProbeKeyRef = useRef("");
+
+  useEffect(() => {
+    heightRef.current = height;
+  }, [height]);
+
+  const setOutputDirAndSave = useCallback((dir: string) => {
+    setOutputDir(dir);
+    saveSettings({ outputDir: dir });
+  }, []);
 
   useEffect(() => {
     activeDownloadRef.current = activeDownload;
@@ -101,8 +196,32 @@ export default function App() {
 
   useEffect(() => {
     loadDeps();
-    homeDir().then((h) => setOutputDir(h ?? ""));
-  }, [loadDeps]);
+    void refreshCookies(false).catch(() => undefined);
+    (async () => {
+      const saved = loadSettings().outputDir;
+      if (saved) {
+        setOutputDir(saved);
+        return;
+      }
+      try {
+        const dir = await defaultDownloadDir();
+        setOutputDirAndSave(dir);
+      } catch {
+        setOutputDirAndSave("");
+      }
+    })();
+  }, [loadDeps, setOutputDirAndSave]);
+
+  useEffect(() => {
+    if (!outputDir) return;
+    let cancelled = false;
+    void reconcilePartialPlaylists(outputDir).then((next) => {
+      if (!cancelled && next) setHistory(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [outputDir]);
 
   useEffect(() => {
     let cancelled = false;
@@ -154,11 +273,36 @@ export default function App() {
 
   useEffect(() => {
     setCompleteMessage(null);
+    setDownloadQuality(null);
+    setQualityResolution(null);
   }, [url, isPlaylist, isMp3]);
 
   useEffect(() => {
-    setQualityVerified(false);
-  }, [url, isPlaylist, isMp3, height]);
+    availableHeightsRef.current = [];
+  }, [url, isPlaylist, isMp3]);
+
+  useEffect(() => {
+    if (isMp3 || !availableHeightsRef.current?.length) return;
+    const probeUrl = normalizeYoutubeUrl(url);
+    if (!looksLikeYoutubeUrl(probeUrl)) return;
+
+    let cancelled = false;
+    void resolveQuality(probeUrl, height, availableHeightsRef.current).then(
+      (quality) => {
+        if (cancelled) return;
+        setQualityResolution(quality);
+        setQualityMsg(quality.message);
+      },
+      () => undefined
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [height, isMp3, url]);
+
+  useEffect(() => {
+    playlistTracksRef.current = playlistTracks;
+  }, [playlistTracks]);
 
   useEffect(() => {
     const unProgress = listen<ProgressEvent>("download-progress", (e) => {
@@ -171,12 +315,27 @@ export default function App() {
         lastOutputFileRef.current = e.payload.outputFile;
       }
       if (active?.isPlaylist && e.payload.itemIndex != null) {
-        const prev = playlistItemsRef.current.get(e.payload.itemIndex);
-        playlistItemsRef.current.set(e.payload.itemIndex, {
-          title:
-            e.payload.title?.trim() ||
-            prev?.title ||
-            `Item ${e.payload.itemIndex}`,
+        const idx = e.payload.itemIndex;
+        const total = e.payload.totalItems ?? active.entryCount ?? undefined;
+        if (total) setPlaylistTotal(total);
+        setPlaylistTracks((prev) =>
+          mergePlaylistProgress(
+            prev,
+            idx,
+            total,
+            e.payload.title,
+            e.payload.percent,
+            e.payload.outputFile
+          )
+        );
+        const prev = playlistItemsRef.current.get(idx);
+        const trackTitle = resolveTrackTitle(
+          e.payload.title,
+          e.payload.outputFile ?? prev?.filePath,
+          idx
+        );
+        playlistItemsRef.current.set(idx, {
+          title: trackTitle,
           filePath: e.payload.outputFile ?? prev?.filePath,
         });
       }
@@ -190,54 +349,32 @@ export default function App() {
 
       const current = activeDownloadRef.current;
       if (current) {
-        const status: HistoryEntry["status"] = message.toLowerCase().includes("cancelled")
-          ? "cancelled"
-          : success
-            ? "complete"
-            : "error";
+        const entry = buildHistoryEntryFromDownload({
+          jobId: e.payload.jobId,
+          message,
+          success,
+          outputDir: outDir,
+          outputFile,
+          active: current,
+          tracks: playlistTracksRef.current,
+          playlistItems: playlistItemsRef.current,
+          progressTitle: progressRef.current?.title,
+          progressOutputFile: progressRef.current?.outputFile,
+          lastOutputFile: lastOutputFileRef.current,
+        });
 
-        const children = current.isPlaylist
-          ? [...playlistItemsRef.current.entries()]
-              .sort(([a], [b]) => a - b)
-              .map(([itemIndex, item]) => ({
-                id: `${e.payload.jobId}-${itemIndex}`,
-                itemIndex,
-                title: item.title,
-                filePath: item.filePath,
-              }))
-          : undefined;
+        if (!current.isPlaylist && entry.filePath) {
+          setLastDownloadedFile(entry.filePath);
+        }
 
-        const displayTitle = current.isPlaylist
-          ? current.playlistTitle ?? current.title
-          : progressRef.current?.title ?? current.title ?? current.url;
-
-        const filePath =
-          outputFile ??
-          progressRef.current?.outputFile ??
-          lastOutputFileRef.current;
-
-        const resolvedPath = current.isPlaylist ? undefined : filePath;
-        if (resolvedPath) setLastDownloadedFile(resolvedPath);
-
-        setHistory(
-          prependHistory({
-            id: e.payload.jobId,
-            url: current.url,
-            title: displayTitle,
-            thumbnailUrl: current.thumbnailUrl,
-            status,
-            finishedAt: new Date().toISOString(),
-            outputDir: outDir,
-            isPlaylist: current.isPlaylist,
-            isMp3: current.isMp3,
-            filePath: resolvedPath,
-            itemCount: current.entryCount ?? children?.length,
-            children: children?.length ? children : undefined,
-          })
-        );
+        setHistory(prependHistory(entry));
         setActiveDownload(null);
         playlistItemsRef.current = new Map();
         lastOutputFileRef.current = undefined;
+      }
+      if (!success && !message.toLowerCase().includes("cancelled")) {
+        setPlaylistTracks([]);
+        setPlaylistTotal(null);
       }
     });
     return () => {
@@ -246,31 +383,99 @@ export default function App() {
     };
   }, []);
 
-  async function handleProbe() {
-    setBusy(true);
-    setQualityMsg("Fetching video info…");
-    setMetadata(null);
-    setQualityVerified(false);
-    try {
-      const probe = await probeVideo(url, isPlaylist, height, isMp3);
-      setQualities(probe.qualities.length ? probe.qualities : STANDARD);
-      setMetadata(probe.metadata);
-      if (probe.quality) {
-        setQualityMsg(probe.quality.message);
-        if (probe.quality.chosen_height) setHeight(probe.quality.chosen_height);
-      } else {
-        setQualityMsg("");
-      }
-      setQualityVerified(true);
-    } catch (e) {
-      setQualityMsg(String(e));
-      setQualityVerified(false);
-    } finally {
-      setBusy(false);
-    }
-  }
+  const handleProbe = useCallback(async () => {
+    const probeUrl = normalizeYoutubeUrl(url);
+    if (!probeUrl || !looksLikeYoutubeUrl(probeUrl)) return;
+    const requestId = ++probeRequestRef.current;
 
-  async function runDownload(forceRedownload = false) {
+    const instant = instantMetadataFromUrl(probeUrl, isPlaylist);
+    if (instant) setMetadata(instant);
+
+    setProbing(true);
+    setQualityMsg(isPlaylist ? "Fetching playlist info…" : "Fetching title & qualities…");
+
+    try {
+      const result = await probeVideo(
+        probeUrl,
+        isPlaylist,
+        heightRef.current,
+        isMp3
+      );
+      if (requestId !== probeRequestRef.current) return;
+
+      setMetadata(result.metadata);
+      availableHeightsRef.current = result.availableHeights ?? [];
+      setQualities(result.qualities.length ? result.qualities : STANDARD);
+
+      if (isMp3) {
+        setQualityMsg(
+          isPlaylist
+            ? "Ready to download playlist audio"
+            : "Ready to download audio"
+        );
+        return;
+      }
+
+      if (isPlaylist) {
+        const count = result.metadata.entry_count;
+        const folder =
+          result.metadata.playlist_title && result.metadata.playlist_id
+            ? `${result.metadata.playlist_title} [${result.metadata.playlist_id}]`
+            : "playlist folder";
+        setQualityMsg(
+          count
+            ? `Playlist ready — ${count} videos · max ${heightRef.current}p · saves to ${folder}/`
+            : `Playlist ready — max ${heightRef.current}p per video · CLI-style folder naming`
+        );
+        return;
+      }
+
+      if (result.quality) {
+        setQualityResolution(result.quality);
+        setQualityMsg(result.quality.message);
+        if (result.quality.chosen_height) setHeight(result.quality.chosen_height);
+      } else {
+        setQualityMsg("Ready — pick a quality and start download");
+      }
+    } catch (e) {
+      if (requestId !== probeRequestRef.current) return;
+      setQualityMsg(String(e));
+    } finally {
+      if (requestId === probeRequestRef.current) setProbing(false);
+    }
+  }, [url, isPlaylist, isMp3]);
+
+  useEffect(() => {
+    const probeUrl = normalizeYoutubeUrl(url);
+    if (!looksLikeYoutubeUrl(probeUrl)) {
+      lastAutoProbeKeyRef.current = "";
+      return;
+    }
+
+    const probeKey = `${probeUrl}|${isPlaylist}|${isMp3}`;
+    if (probeKey === lastAutoProbeKeyRef.current) return;
+
+    setMetadata(instantMetadataFromUrl(probeUrl, isPlaylist));
+    setQualityMsg("");
+
+    const timer = window.setTimeout(() => {
+      lastAutoProbeKeyRef.current = probeKey;
+      void handleProbe();
+    }, 500);
+
+    return () => {
+      window.clearTimeout(timer);
+      probeRequestRef.current += 1;
+    };
+  }, [url, isPlaylist, isMp3, handleProbe]);
+
+  async function runDownload(forceRedownload = false, resumeEntry?: HistoryEntry) {
+    const useUrl = resumeEntry?.url ?? url;
+    const usePlaylist = resumeEntry?.isPlaylist ?? isPlaylist;
+    const useMp3 = resumeEntry?.isMp3 ?? isMp3;
+    const useHeight = resumeEntry?.requestedHeight ?? height;
+    const useOutputDir = resumeEntry?.outputDir ?? outputDir;
+
     setBusy(true);
     setPreparing(true);
     setPreparingMessage(
@@ -278,39 +483,105 @@ export default function App() {
     );
     setCompleteMessage(null);
     setLastDownloadedFile(null);
+    setDownloadQuality(null);
     setLogs([]);
     setProgress(null);
     setPaused(false);
     playlistItemsRef.current = new Map();
+    setPlaylistTracks([]);
+    setPlaylistTotal(null);
     lastOutputFileRef.current = undefined;
     try {
       let meta = metadata;
-      if (!meta && url) {
+      const downloadUrl = normalizeYoutubeUrl(useUrl);
+      if (!meta?.title && downloadUrl) {
         setPreparingMessage("Fetching video info…");
-        meta = await fetchMetadata(url, isPlaylist);
+        meta = await fetchMetadata(downloadUrl, usePlaylist);
         setMetadata(meta);
       }
       setPreparingMessage("Starting yt-dlp…");
+
+      let resolvedQuality = qualityResolution;
+      if (!useMp3 && !usePlaylist && downloadUrl) {
+        try {
+          resolvedQuality = await resolveQuality(
+            downloadUrl,
+            useHeight,
+            availableHeightsRef.current.length
+              ? availableHeightsRef.current
+              : undefined
+          );
+          setQualityResolution(resolvedQuality);
+          setQualityMsg(resolvedQuality.message);
+        } catch {
+          resolvedQuality = null;
+        }
+      }
+
+      setDownloadQuality(
+        qualityInfoFromResolution(resolvedQuality, useMp3, usePlaylist, useHeight)
+      );
+
+      if (usePlaylist && downloadUrl) {
+        setPreparingMessage("Loading playlist titles…");
+        const total = meta?.entry_count;
+        if (total) setPlaylistTotal(total);
+        try {
+          const titles = await listPlaylistTitles(downloadUrl);
+          if (titles.length) {
+            setPlaylistTracks(buildPlaylistTracksFromTitles(titles, total ?? titles.length));
+          } else if (total) {
+            setPlaylistTracks(
+              Array.from({ length: total }, (_, i) => ({
+                itemIndex: i + 1,
+                title: `Video ${i + 1}`,
+                percent: 0,
+                status: "pending" as const,
+              }))
+            );
+          }
+        } catch {
+          if (total) {
+            setPlaylistTracks(
+              Array.from({ length: total }, (_, i) => ({
+                itemIndex: i + 1,
+                title: `Video ${i + 1}`,
+                percent: 0,
+                status: "pending" as const,
+              }))
+            );
+          }
+        }
+      }
+
+      const playlistName = playlistDisplayTitle(
+        meta?.playlist_title,
+        meta?.title,
+        meta?.playlist_id
+      );
+
       setActiveDownload({
-        url,
-        title: meta?.title ?? meta?.playlist_title ?? url,
+        url: downloadUrl,
+        title: usePlaylist ? playlistName : meta?.title ?? downloadUrl,
         thumbnailUrl: meta?.thumbnail_url,
-        isPlaylist,
-        isMp3,
-        playlistTitle: meta?.playlist_title ?? meta?.title,
+        isPlaylist: usePlaylist,
+        isMp3: useMp3,
+        playlistTitle: playlistName,
+        playlistId: meta?.playlist_id,
         entryCount: meta?.entry_count,
+        requestedHeight: useMp3 ? undefined : useHeight,
       });
       const id = await startDownload({
-        url,
-        isPlaylist,
-        isMp3,
-        audioQuality: isMp3 ? "0" : undefined,
-        requestedHeight: isMp3 ? undefined : height,
-        outputDir,
-        usePlaylistFolder: isPlaylist,
+        url: downloadUrl,
+        isPlaylist: usePlaylist,
+        isMp3: useMp3,
+        audioQuality: useMp3 ? "0" : undefined,
+        requestedHeight: useMp3 ? undefined : useHeight,
+        outputDir: useOutputDir,
+        usePlaylistFolder: usePlaylist,
         customFolderName: undefined,
         concurrentFragments,
-        skipQualityCheck: qualityVerified,
+        skipQualityCheck: true,
         forceRedownload,
       });
       setJobId(id);
@@ -340,13 +611,49 @@ export default function App() {
 
   async function handleCancel() {
     if (!jobId) return;
-    try {
-      await cancelDownload(jobId);
-    } catch (e) {
-      setCompleteMessage(String(e));
+    const id = jobId;
+    const snapshot = {
+      active: activeDownloadRef.current,
+      tracks: playlistTracksRef.current,
+      playlistItems: new Map(playlistItemsRef.current),
+      progressTitle: progressRef.current?.title,
+      progressOutputFile: progressRef.current?.outputFile,
+      lastOutputFile: lastOutputFileRef.current,
+      outputDir,
+    };
+
+    const persistCancelled = () => {
+      if (!snapshot.active) return;
+      setHistory(
+        prependHistory(
+          buildHistoryEntryFromDownload({
+            jobId: id,
+            message: "Download cancelled",
+            success: false,
+            outputDir: snapshot.outputDir,
+            active: snapshot.active,
+            tracks: snapshot.tracks,
+            playlistItems: snapshot.playlistItems,
+            progressTitle: snapshot.progressTitle,
+            progressOutputFile: snapshot.progressOutputFile,
+            lastOutputFile: snapshot.lastOutputFile,
+          })
+        )
+      );
+      setCompleteMessage("Download cancelled");
       setJobId(null);
       setBusy(false);
       setPaused(false);
+      setActiveDownload(null);
+      playlistItemsRef.current = new Map();
+    };
+
+    try {
+      await cancelDownload(id);
+      persistCancelled();
+    } catch (e) {
+      persistCancelled();
+      setCompleteMessage(String(e));
     }
   }
 
@@ -373,6 +680,26 @@ export default function App() {
   function handlePlayInBackgroundChange(enabled: boolean) {
     setPlayInBackground(enabled);
     saveSettings({ playInBackground: enabled });
+  }
+
+  function handleResumeFromHistory(entry: HistoryEntry) {
+    setUrl(entry.url);
+    setIsPlaylist(!!entry.isPlaylist);
+    setIsMp3(!!entry.isMp3);
+    if (entry.requestedHeight) setHeight(entry.requestedHeight);
+    setOutputDirAndSave(entry.outputDir);
+    setTab("download");
+    void runDownload(false, entry);
+  }
+
+  function handleRedownloadFromHistory(entry: HistoryEntry) {
+    setUrl(entry.url);
+    setIsPlaylist(!!entry.isPlaylist);
+    setIsMp3(!!entry.isMp3);
+    if (entry.requestedHeight) setHeight(entry.requestedHeight);
+    setOutputDirAndSave(entry.outputDir);
+    setTab("download");
+    void runDownload(true, entry);
   }
 
   function handleClearHistory() {
@@ -531,6 +858,8 @@ export default function App() {
             entries={history}
             onClear={handleClearHistory}
             onRemoveSelected={handleRemoveHistoryEntries}
+            onResume={handleResumeFromHistory}
+            onRedownload={handleRedownloadFromHistory}
             onOpenFolder={openOutputFolder}
             onOpenFile={openMediaFile}
             onOpenLocation={openFileLocation}
@@ -567,10 +896,12 @@ export default function App() {
               qualities={qualities}
               qualityMsg={qualityMsg}
               outputDir={outputDir}
-              setOutputDir={setOutputDir}
+              setOutputDir={setOutputDirAndSave}
               metadata={metadata}
               busy={busy}
+              probing={probing}
               preparing={preparing}
+              canStart={looksLikeYoutubeUrl(normalizeYoutubeUrl(url)) && !!outputDir}
               downloadComplete={downloadComplete}
               onProbe={handleProbe}
               onDownload={handleDownload}
@@ -590,6 +921,14 @@ export default function App() {
               onPause={handlePause}
               onResume={handleResume}
               onOpenFolder={() => openOutputFolder(outputDir)}
+              onOpenPlaylistFolder={() => {
+                const folder =
+                  playlistFolderPath(
+                    outputDir,
+                    progress?.outputFile ?? lastDownloadedFile ?? undefined
+                  ) ?? outputDir;
+                return openOutputFolder(folder);
+              }}
               outputDir={outputDir}
               outputFile={
                 lastDownloadedFile ??
@@ -597,6 +936,29 @@ export default function App() {
                 undefined
               }
               completeMessage={completeMessage}
+              isPlaylist={activeDownload?.isPlaylist ?? isPlaylist}
+              playlistTitle={
+                playlistDisplayTitle(
+                  activeDownload?.playlistTitle ??
+                    metadata?.playlist_title ??
+                    metadata?.title,
+                  metadata?.title,
+                  metadata?.playlist_id ?? activeDownload?.playlistId
+                )
+              }
+              playlistTotal={
+                playlistTotal ??
+                progress?.totalItems ??
+                activeDownload?.entryCount ??
+                metadata?.entry_count ??
+                undefined
+              }
+              playlistTracks={playlistTracks}
+              playlistFolder={playlistFolderPath(
+                outputDir,
+                progress?.outputFile ?? lastDownloadedFile ?? undefined
+              )}
+              downloadQuality={downloadQuality}
             />
           </>
         )}
