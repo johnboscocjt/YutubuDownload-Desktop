@@ -69,44 +69,54 @@ function boundsNearlyEqual(
   );
 }
 
-function getPlayerBoundsFromRect(rect: DOMRect, cinemaMode: boolean): NativePlayerBounds | null {
-  if (rect.width < 80 || rect.height < 40) return null;
+function getPlayerBoundsFromRect(
+  rect: DOMRect,
+  cinemaMode: boolean,
+  panelVisible: boolean
+): NativePlayerBounds | null {
+  if (!panelVisible || rect.width < 80 || rect.height < 40) return null;
 
-  const wrapArea = rect.width * rect.height;
+  const offScreen =
+    rect.bottom <= 0 ||
+    rect.top >= window.innerHeight ||
+    rect.right <= 0 ||
+    rect.left >= window.innerWidth;
+
+  if (offScreen) return HIDDEN_PLAYER_BOUNDS;
+
   const visLeft = Math.max(rect.left, 0);
   const visTop = Math.max(rect.top, 0);
   const visRight = Math.min(rect.right, window.innerWidth);
   const visBottom = Math.min(rect.bottom, window.innerHeight);
   const visW = visRight - visLeft;
   const visH = visBottom - visTop;
-  const visArea = Math.max(0, visW) * Math.max(0, visH);
-  const visibleRatio = wrapArea > 0 ? visArea / wrapArea : 0;
 
-  if (visW < MIN_PLAYER_WIDTH || visH < MIN_PLAYER_HEIGHT || visibleRatio < 0.12) {
+  if (visW < MIN_PLAYER_WIDTH || visH < MIN_PLAYER_HEIGHT) {
     return HIDDEN_PLAYER_BOUNDS;
   }
 
-  const partiallyClipped =
-    rect.top < -2 ||
-    rect.bottom > window.innerHeight + 2 ||
-    rect.left < -2 ||
-    rect.right > window.innerWidth + 2;
+  const clipped =
+    !cinemaMode &&
+    (rect.top < -2 ||
+      rect.bottom > window.innerHeight + 2 ||
+      rect.left < -2 ||
+      rect.right > window.innerWidth + 2);
 
-  if (!partiallyClipped && !cinemaMode) {
+  if (clipped) {
     return {
-      x: Math.round(rect.left),
-      y: Math.round(rect.top),
-      width: Math.round(rect.width),
-      height: Math.round(rect.height),
+      x: Math.round(visLeft),
+      y: Math.round(visTop),
+      width: Math.round(visW),
+      height: Math.round(visH),
       visible: true,
     };
   }
 
   return {
-    x: Math.round(visLeft),
-    y: Math.round(visTop),
-    width: Math.round(visW),
-    height: Math.round(visH),
+    x: Math.round(rect.left),
+    y: Math.round(rect.top),
+    width: Math.round(rect.width),
+    height: Math.round(rect.height),
     visible: true,
   };
 }
@@ -398,7 +408,11 @@ export default function PlayCompleted({
   const getPlayerBounds = useCallback((): NativePlayerBounds | null => {
     const wrap = playerWrapRef.current;
     if (!wrap) return null;
-    return getPlayerBoundsFromRect(wrap.getBoundingClientRect(), cinemaModeRef.current);
+    return getPlayerBoundsFromRect(
+      wrap.getBoundingClientRect(),
+      cinemaModeRef.current,
+      panelVisibleRef.current
+    );
   }, []);
 
   const startNative = useCallback(async (): Promise<"ok" | "retry" | "fail"> => {
@@ -412,16 +426,22 @@ export default function PlayCompleted({
       });
       setError("");
       window.setTimeout(() => {
-        const b = getPlayerBounds();
-        if (b?.visible) {
-          void updateNativePlayerBounds({ bounds: b }).finally(() => setNativeActive(true));
-        } else {
-          setNativeActive(true);
-          window.setTimeout(() => {
+        const applyBounds = async () => {
+          const b = getPlayerBounds();
+          if (b?.visible) {
+            await updateNativePlayerBounds({ bounds: b });
+            setNativeActive(true);
+            return;
+          }
+          window.setTimeout(async () => {
             const retry = getPlayerBounds();
-            if (retry?.visible) void updateNativePlayerBounds({ bounds: retry });
-          }, 200);
-        }
+            if (retry?.visible) {
+              await updateNativePlayerBounds({ bounds: retry });
+              setNativeActive(true);
+            }
+          }, 250);
+        };
+        void applyBounds();
       }, 120);
       return "ok";
     } catch (e) {
@@ -589,7 +609,7 @@ export default function PlayCompleted({
     window.requestAnimationFrame(() => {
       scheduleSyncBounds(true);
     });
-  }, [nativeActive, playerMode, scheduleSyncBounds]);
+  }, [nativeActive, playerMode, panelVisible, scheduleSyncBounds]);
 
   const syncCursorVisibility = useCallback(async () => {
       const win = getCurrentWindow();
@@ -650,12 +670,37 @@ export default function PlayCompleted({
   }, [playInBackground, panelVisible, onBackgroundPlaybackChange]);
 
   useEffect(() => {
-    if (!panelVisible || !nativeActive || playerMode !== "embed") return;
-    lastBoundsRef.current = null;
+    if (!panelVisible || playerMode !== "embed") return;
+
+    let cancelled = false;
+    const restore = () => {
+      if (cancelled) return;
+      lastBoundsRef.current = null;
+      lastBoundsKeyRef.current = "";
+      if (nativeActive) {
+        const b = getPlayerBounds();
+        if (b?.visible) {
+          void updateNativePlayerBounds({ bounds: b }).then(() => {
+            if (cinemaModeRef.current) void nativePlayerControl("fillFrame");
+          });
+        } else {
+          void syncNativeBounds({ applyFill: cinemaModeRef.current });
+        }
+        return;
+      }
+      const wrap = playerWrapRef.current;
+      if (!wrap || !current || current.isAudio) return;
+      void startNative();
+    };
+
     window.requestAnimationFrame(() => {
-      scheduleSyncBounds(true);
+      window.requestAnimationFrame(restore);
     });
-  }, [panelVisible, nativeActive, playerMode, scheduleSyncBounds]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [panelVisible, nativeActive, playerMode, current, syncNativeBounds, startNative, getPlayerBounds]);
 
   const wakeControls = useCallback(
     (force = false) => {
@@ -1013,7 +1058,7 @@ export default function PlayCompleted({
     [completed, searchQuery, libraryFilter]
   );
 
-  if (!panelVisible) {
+  if (!panelVisible && !playInBackground) {
     return null;
   }
 
@@ -1023,7 +1068,12 @@ export default function PlayCompleted({
   const volumeLabel = playerMuted ? "Muted" : `${Math.round(playerVolume)}%`;
 
   return (
-    <div className={`play-completed${cinemaMode ? " play-completed--cinema" : ""}`}>
+    <div
+      className={`play-completed${cinemaMode ? " play-completed--cinema" : ""}${
+        !panelVisible ? " play-completed--panel-hidden" : ""
+      }`}
+      aria-hidden={!panelVisible}
+    >
       <div className="play-completed-player">
         <div
           className={`card player-card${cinemaMode ? " player-card--cinema" : ""}${

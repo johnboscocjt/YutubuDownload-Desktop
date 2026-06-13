@@ -21,7 +21,7 @@ import DownloadForm from "./components/DownloadForm";
 import DownloadHistory from "./components/DownloadHistory";
 import PlayCompleted from "./components/PlayCompleted";
 import ProgressPanel from "./components/ProgressPanel";
-import { clearHistory, loadHistory, prependHistory, saveHistory } from "./history";
+import { clearHistory, loadHistory, prependHistory, removeHistoryEntries, saveHistory } from "./history";
 import { loadSettings, saveSettings } from "./settings";
 import type {
   DependencyStatus,
@@ -379,6 +379,10 @@ export default function App() {
     setHistory(clearHistory());
   }
 
+  function handleRemoveHistoryEntries(ids: string[]) {
+    setHistory(removeHistoryEntries(ids));
+  }
+
   return (
     <div className="shell">
       <aside className="sidebar">
@@ -526,6 +530,7 @@ export default function App() {
           <DownloadHistory
             entries={history}
             onClear={handleClearHistory}
+            onRemoveSelected={handleRemoveHistoryEntries}
             onOpenFolder={openOutputFolder}
             onOpenFile={openMediaFile}
             onOpenLocation={openFileLocation}

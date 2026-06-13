@@ -74,3 +74,11 @@ export function clearHistory(): HistoryEntry[] {
   localStorage.removeItem(HISTORY_KEY);
   return [];
 }
+
+export function removeHistoryEntries(ids: string[]): HistoryEntry[] {
+  if (!ids.length) return loadHistory();
+  const drop = new Set(ids);
+  const next = loadHistory().filter((entry) => !drop.has(entry.id));
+  saveHistory(next);
+  return next;
+}

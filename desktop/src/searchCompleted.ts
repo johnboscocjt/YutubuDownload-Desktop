@@ -103,6 +103,54 @@ function scoreEntry(entry: HistoryEntry, tokens: string[]): number {
   return score;
 }
 
+export type HistoryStatusFilter = "all" | "complete" | "cancelled" | "error";
+
+function matchesStatusFilter(entry: HistoryEntry, filter: HistoryStatusFilter): boolean {
+  if (filter === "all") return true;
+  return entry.status === filter;
+}
+
+function scoreHistoryEntry(entry: HistoryEntry, tokens: string[]): number {
+  if (!tokens.length) return 1;
+
+  const haystack = [
+    entrySearchHaystack(entry),
+    normalizeSearchText(entry.status),
+  ].join(" ");
+
+  if (!haystack) return 0;
+
+  for (const token of tokens) {
+    if (!haystack.includes(token)) return 0;
+  }
+
+  return scoreEntry(entry, tokens);
+}
+
+export function searchHistoryEntries(
+  entries: HistoryEntry[],
+  query: string,
+  statusFilter: HistoryStatusFilter = "all"
+): HistoryEntry[] {
+  const filtered = entries.filter((entry) => matchesStatusFilter(entry, statusFilter));
+  const tokens = parseSearchTokens(query);
+
+  if (!tokens.length) {
+    return [...filtered].sort(
+      (a, b) => new Date(b.finishedAt).getTime() - new Date(a.finishedAt).getTime()
+    );
+  }
+
+  return filtered
+    .map((entry) => ({ entry, score: scoreHistoryEntry(entry, tokens) }))
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return new Date(b.entry.finishedAt).getTime() - new Date(a.entry.finishedAt).getTime();
+    })
+    .map(({ entry }) => entry);
+}
+
 export function searchCompletedDownloads(
   entries: HistoryEntry[],
   query: string,

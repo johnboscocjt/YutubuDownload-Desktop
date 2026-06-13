@@ -477,6 +477,11 @@ pub async fn start_native_player(
         refresh_mpv_surface();
         let _ = send_mpv_ipc("fitWindow");
         let _ = send_mpv_ipc("fillFrame");
+
+        let win_final = window.clone();
+        let bounds_final = bounds.clone();
+        run_on_main(&win_final.clone(), move || reposition_child_embed(&win_final, &bounds_final))?;
+
         Ok(())
     }
 }
