@@ -1,6 +1,6 @@
 # Desktop App Guide — Using YutubuDownload GUI
 
-Welcome to **YutubuDownload Desktop v2.0.1**. This guide walks through every part of the app: sidebar navigation, downloading, history, setup, settings, and in-app documentation.
+Welcome to **YutubuDownload Desktop v2.0.1**. This guide walks through every part of the app with screenshots: sidebar navigation, downloading, playback, history, setup, settings, and in-app documentation.
 
 ---
 
@@ -30,38 +30,62 @@ flowchart LR
 
 ## Download
 
-The **Download** page is where you paste URLs and start jobs.
+The **Download** page is where you paste URLs, choose format, and track progress.
+
+![Download page — full playlist saved as MP3](Screenshots/desktop/01-download-playlist-mp3.png)
+
+**What you see in this screenshot**
+
+- **Full playlist** mode selected — all items in the playlist are downloaded into one numbered folder.
+- **MP3** format selected — each item is extracted as audio (not video).
+- **Destination** shows where files are saved (`~/YutubuDownload-Desktop` by default). Use **Browse** to change it.
+- The playlist card shows the real title (**Git Worktrees Crash Course**), thumbnail, item count, and folder path.
+- **Preview & verify quality** checks metadata before you start; **Redownload** lets you run the job again.
+- When finished, the progress card shows **Playlist complete · 5/5 DONE**, per-video progress, and a confirmation that files were saved as MP3.
 
 ### Step-by-step
 
-1. **Paste a YouTube URL** in the URL field (video or playlist link).
-2. **Choose type**
-   - **Single video** — one file
-   - **Full playlist** — all items; saved in a numbered playlist folder
-3. **Choose format**
-   - **Video** — pick max height (360p–4K)
-   - **MP3** — audio only
-4. **Destination** — folder where files are saved. Click **Browse** to pick a folder (defaults to your home directory).
-5. **Preview & verify quality** (recommended for video) — fetches title, thumbnail, available heights, and confirms your resolution before download.
-6. **Start download** — begins the job; progress appears below the form.
+1. **Paste a YouTube URL** (video or playlist).
+2. **Choose type** — **Single video** or **Full playlist**.
+3. **Choose format** — **Video** (pick max height) or **MP3** (audio only).
+4. **Destination** — folder for saved files. Click **Browse** to pick a folder.
+5. **Preview & verify quality** (recommended for video) — fetches title, thumbnail, heights, and confirms resolution.
+6. **Start download** — progress appears below the form.
 
 ### During a download
 
-The progress card shows:
+- **Thumbnail** and title (playlist folders use the real playlist name, not a placeholder ID).
+- **Percent bar**, speed, ETA (hidden on weak networks).
+- **Low network** badge when the connection is unstable — download continues.
+- **Pause / Resume** (Linux) — temporarily suspend yt-dlp.
+- **Cancel** — stops the download.
+- **Open destination** — opens the save folder in your file manager.
 
-- **Thumbnail** and title
-- **Percent bar**, speed, ETA (hidden on weak networks)
-- **Low network** badge when the connection is unstable — download continues
-- **Pause / Resume** (Linux) — temporarily suspend the yt-dlp process
-- **Cancel** — stops the download
-- **Open destination** — opens the save folder in your file manager
-- **Show technical log** — optional raw yt-dlp output (hidden by default)
+---
 
-### Tips
+## Play Completed
 
-- Run **Preview** first on slow networks so quality is confirmed before a long download.
-- For playlists, use **Full playlist** and a dedicated **Destination** with enough free space.
-- If **Setup required** appears at the bottom of the sidebar, open **Setup** before downloading.
+**Play Completed** lets you watch or listen to finished downloads inside the app (mpv when available).
+
+![Play Completed — library, filters, and playback controls](Screenshots/desktop/02-play-completed.png)
+
+**What you see in this screenshot**
+
+- **Now playing** at the top — empty until you pick a file; then shows the current track and controls.
+- **Search** — find downloads by title, filename, playlist item, or URL (use quotes for exact phrases).
+- **Filters** — **All**, **Playlists**, **Singles**, **Audio** narrow the list.
+- **Autoplay next** and **Loop playlist / queue** control queue behaviour.
+- **Play all completed** starts every finished download in order.
+- Each row shows type badges (e.g. **Playlist · 5 items · Audio**), save path, **Play all**, and **Pick video…** for playlists.
+- Single videos have **Play** and **Open location**.
+
+### Playlist playback
+
+- **Play all** runs the full queue; numbered picks start from that track.
+- **Now playing** shows current title and track number.
+- **Up next** lists remaining items — click any to jump.
+- **Previous / Next** move through the queue.
+- MP3 playlists use the audio player; video files use the video player (extension wins).
 
 ---
 
@@ -69,59 +93,61 @@ The progress card shows:
 
 **History** lists recent downloads (completed, cancelled, or failed).
 
-| Action | What it does |
-|--------|----------------|
-| **Playlist row** | One entry per playlist; click **▸** or the row to expand and see each video |
-| **Single video** | One flat row with thumbnail, title, status, date |
-| **Destination** | Opens the folder where that job saved files |
-| **Clear history** | Removes the list only — **files on disk are not deleted** |
+![History — search, filters, and Open playlist](Screenshots/desktop/03-history.png)
 
-Empty state: **No recent downloads** until you finish at least one job.
+**What you see in this screenshot**
+
+- **Search** by title, filename, URL, or status.
+- **Filters** — **All**, **Complete**, **Uncompleted**, **Cancelled**, **Failed**.
+- Playlist rows show item count, status, timestamp, and save path.
+- **Open playlist** — builds an M3U and opens it in VLC or mpv (external player).
+- **Destination** — opens the folder where that job saved files.
+- **Open file** / **Open location** for single-video downloads.
+- **Clear all** removes history only — **files on disk are not deleted**.
 
 ---
 
-## Play Completed
+## Docs
 
-**Play Completed** lets you watch or listen to finished downloads inside the app (no external player required).
+Built-in guides open here without leaving the app.
 
-| Type | What you see |
-|------|----------------|
-| **Single video / audio** | One player — **Play** starts that file |
-| **Playlist** | **Play all** runs the full queue; numbered buttons (**01**, **02**, …) start from that track |
+![Docs — in-app guide browser](Screenshots/desktop/04-docs.png)
 
-While a playlist is playing:
+**What you see in this screenshot**
 
-- **Now playing** shows the current title and track number
-- **Up next** lists the remaining items — click any to jump ahead
-- **Previous / Next** move through the queue
-- When **Play all** is active, the next track starts automatically when one finishes
-
-Files are loaded from your **Destination** folder. Older history entries without saved paths are matched automatically by title and playlist index.
+- Left column lists guides by category: **Getting Started**, **Downloading**, **Technology**, **Support**, **Reference**.
+- **Desktop App Guide** (this page) is selected; content renders on the right with diagrams and formatted text.
+- Other guides: **Download Guide**, **Technology & Architecture**, **Player & Download Performance**, **Troubleshooting**, **Build & Develop**, **Full Manual**, **Release Notes v2.0.1**.
 
 ---
 
 ## Setup
 
-**Setup** checks tools the app needs (same as terminal `ytd`):
+**Setup** checks tools the app needs (same stack as terminal `ytd`).
 
-| Tool | Required for |
-|------|----------------|
-| **yt-dlp** | Fetching and downloading |
-| **ffmpeg** | Merging video+audio, MP3 conversion |
-| **Deno or Node** | YouTube JS challenge solving |
-| **Python + browser-cookie3** | Cookie export for age-restricted videos |
+![Setup — system dependencies all OK](Screenshots/desktop/05-setup.png)
 
-Use **Refresh status** after installing tools. Use **Refresh cookies** if downloads fail with sign-in or bot errors (uses your default browser cookies).
+**What you see in this screenshot**
 
-Install hints are shown per tool when something is missing.
+- **yt-dlp** — fetching and downloading (**OK**).
+- **ffmpeg** — merging video+audio, MP3 conversion (**OK**).
+- **JS runtime (Deno/Node)** — YouTube JS challenge solving (**OK**).
+- **Python cookies** — browser cookie export for age-restricted videos (**OK**).
+- **Re-check** runs a fresh dependency scan.
+- **Refresh cookies** updates cookies from your default browser if downloads fail with sign-in or bot errors.
+
+If any row is missing, install hints appear. The sidebar shows **Setup required** until everything is OK.
 
 ---
 
 ## Settings
 
-### Concurrent fragments
+![Settings — background playback and concurrent fragments](Screenshots/desktop/06-settings.png)
 
-Controls how many **fragments** yt-dlp downloads in parallel (same as terminal `YTDL_CONCURRENT_FRAGMENTS`).
+**What you see in this screenshot**
+
+- **Background playback** — when checked, video or audio keeps playing when you switch to Download, History, Docs, or other tabs. When off, playback stops when you leave **Play Completed**.
+- **Concurrent fragments** — how many stream fragments yt-dlp fetches in parallel (same idea as terminal `YTDL_CONCURRENT_FRAGMENTS`).
 
 | Value | When to use |
 |-------|-------------|
@@ -130,23 +156,7 @@ Controls how many **fragments** yt-dlp downloads in parallel (same as terminal `
 | **4** | Strong fibre or office network |
 | **5–8** | Only on very fast, stable internet |
 
-Higher values can speed up large 1080p/4K files on fast links. Too many on weak links may cause timeouts. Start at **1**, then try **2** or **3** if downloads finish without **Low network** warnings.
-
----
-
-## Docs (this section)
-
-Built-in guides open here without leaving the app:
-
-| Guide | Contents |
-|-------|----------|
-| **Desktop App Guide** | This page — GUI navigation and features |
-| **Download Guide** | Quality probing, video, playlist, MP3 flows (with diagrams) |
-| **Technology** | Rust core, Tauri, yt-dlp stack |
-| **Troubleshooting** | Common fixes |
-| **Release Notes** | What changed in v2.0.1 |
-
-Select a title on the left; content renders on the right with diagrams and formatted text.
+Start at **1**, then try **2** or **3** if downloads finish without **Low network** warnings.
 
 ---
 
@@ -157,7 +167,8 @@ Select a title on the left; content renders on the right with diagrams and forma
 | Graphical UI | ✓ | — |
 | Quality preview + thumbnail | ✓ | Prompts |
 | Pause download | Linux | — |
-| Download history | ✓ | — |
+| Download history + Open playlist | ✓ | — |
+| In-app playback | ✓ | — |
 | Loop mode (multiple URLs) | — | ✓ |
 | Same quality probing | ✓ | ✓ |
 | Same cookie / yt-dlp core | ✓ | ✓ |
@@ -170,10 +181,11 @@ You can use both on the same machine; they share the same download engine (`ytd-
 
 | Problem | Try |
 |---------|-----|
-| Setup required | Open **Setup**, install missing tools, **Refresh status** |
+| Setup required | Open **Setup**, install missing tools, **Re-check** |
 | Sign-in / bot error | **Setup** → **Refresh cookies** |
 | Wrong quality | **Preview & verify quality** before starting |
 | Slow or stalling | **Settings** → set concurrent fragments to **1** |
+| Playlist shows wrong name | Re-download or check folder under Destination |
 | Cancel ignored | Wait a moment; cancel kills the yt-dlp process |
 
 See **Troubleshooting** in Docs for more detail.

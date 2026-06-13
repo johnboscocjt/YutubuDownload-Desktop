@@ -32,7 +32,7 @@ const DOCS: &[DocSpec] = &[
     DocSpec {
         id: "gui-app-guide",
         title: "Desktop App Guide",
-        description: "Navigate the GUI: Download, History, Setup, Settings, and every feature.",
+        description: "Navigate the GUI with screenshots: Download, Play Completed, History, Setup, Settings.",
         category: "Getting Started",
         paths: &["desktop/docs/GUI_APP_GUIDE.md", "GUI_APP_GUIDE.md"],
         embed: Some(include_str!("../../../docs/GUI_APP_GUIDE.md")),
@@ -43,7 +43,7 @@ const DOCS: &[DocSpec] = &[
         description: "Quality, single video, playlist, and MP3 flows with diagrams.",
         category: "Downloading",
         paths: &["DOWNLOAD_GUIDE.md"],
-        embed: None,
+        embed: Some(include_str!("../../../../DOWNLOAD_GUIDE.md")),
     },
     DocSpec {
         id: "technology",
@@ -51,7 +51,15 @@ const DOCS: &[DocSpec] = &[
         description: "Tauri, Rust core, yt-dlp stack, and reliability design.",
         category: "Technology",
         paths: &["desktop/docs/TECHNOLOGY.md", "TECHNOLOGY.md"],
-        embed: None,
+        embed: Some(include_str!("../../../docs/TECHNOLOGY.md")),
+    },
+    DocSpec {
+        id: "player-performance",
+        title: "Player & Download Performance",
+        description: "How the in-app player works (mpv embed, seek) and how downloads stay fast.",
+        category: "Technology",
+        paths: &["desktop/docs/PLAYER_AND_PERFORMANCE.md"],
+        embed: Some(include_str!("../../../docs/PLAYER_AND_PERFORMANCE.md")),
     },
     DocSpec {
         id: "troubleshooting",
@@ -59,7 +67,7 @@ const DOCS: &[DocSpec] = &[
         description: "Reinstall, cookies, regex fixes, and common errors.",
         category: "Support",
         paths: &["TROUBLESHOOTING.md"],
-        embed: None,
+        embed: Some(include_str!("../../../../TROUBLESHOOTING.md")),
     },
     DocSpec {
         id: "desktop-app",

@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { PLATFORMS, APP, type Platform } from "@/lib/config";
 import type { ResolvedDownload } from "@/lib/github";
+import { PLATFORM_ICONS, IconArrowRight } from "./svg/Icons";
+import Reveal from "./Reveal";
 
 interface ReleasePayload {
   version: string;
@@ -35,93 +37,133 @@ export default function DownloadSection() {
 
   const resolved = data?.downloads ?? [];
   const terminal = PLATFORMS.find((p) => p.id === "terminal");
+  const TerminalIcon = PLATFORM_ICONS.terminal;
 
   return (
-    <section id="download">
+    <section id="download" className="section-download">
       <div className="container">
-        <div className="section-head">
-          <h2>Download for your platform</h2>
-          <p>
-            Version {data?.version ?? APP.releaseTag} — desktop builds appear automatically
-            when published to GitHub Releases. Terminal install always available.
-          </p>
-        </div>
+        <Reveal>
+          <div className="section-head">
+            <span className="section-tag">Get started</span>
+            <h2>Download for your platform</h2>
+            <p>
+              Version {data?.version ?? APP.releaseTag} — Linux desktop (.deb) is
+              available now. Windows and macOS builds are coming soon.
+            </p>
+          </div>
+        </Reveal>
 
         <div className="download-grid">
-          {PLATFORMS.filter((p) => p.id !== "terminal").map((p) => {
+          {PLATFORMS.filter((p) => p.id !== "terminal").map((p, i) => {
             const info = resolved.find((d) => d.platform === p.id);
+            const comingSoon = info?.comingSoon ?? p.comingSoon ?? false;
             const available = info?.available ?? false;
             const recommended = detected === p.id;
+            const PlatformIcon = PLATFORM_ICONS[p.id];
+
+            let statusLabel = "Building…";
+            let statusClass = "status-soon";
+            if (comingSoon) {
+              statusLabel = "Coming soon";
+              statusClass = "status-soon";
+            } else if (available) {
+              statusLabel = info?.filename ?? "Ready";
+              statusClass = "status-ready";
+            } else if (p.id === "linux") {
+              statusLabel = "Release pending";
+              statusClass = "status-soon";
+            }
 
             return (
-              <article
-                key={p.id}
-                className={`download-card ${recommended ? "recommended" : ""}`}
-              >
-                <div className="download-card-head">
-                  <span className="download-icon">{p.icon}</span>
-                  <h3>{p.label}</h3>
-                </div>
-                <p>{p.description}</p>
-                <div className="formats">
-                  {p.formats.map((f) => (
-                    <span key={f} className="format-tag">
-                      {f}
-                    </span>
-                  ))}
-                </div>
-                <span className={`status-pill ${available ? "status-ready" : "status-soon"}`}>
-                  {available
-                    ? info?.filename ?? "Ready"
-                    : "See GitHub Releases"}
-                </span>
-                <a
-                  className="btn btn-primary"
-                  href={`/api/download?platform=${p.id}`}
+              <Reveal key={p.id} delay={i * 100}>
+                <article
+                  className={`download-card ${recommended ? "recommended" : ""} ${comingSoon ? "download-soon" : ""}`}
                 >
-                  Download for {p.label}
-                </a>
-                {recommended && (
-                  <span className="format-tag" style={{ color: "var(--accent)" }}>
-                    ✓ Detected your OS
-                  </span>
-                )}
-              </article>
+                  <div className="download-card-glow" />
+                  <div className="download-card-head">
+                    <span className="download-icon">
+                      <PlatformIcon size={28} />
+                    </span>
+                    <div>
+                      <h3>{p.label}</h3>
+                      {recommended && <span className="detected-badge">Detected OS</span>}
+                    </div>
+                  </div>
+                  <p>{p.description}</p>
+                  <div className="formats">
+                    {p.formats.map((f) => (
+                      <span key={f} className="format-tag">
+                        {f}
+                      </span>
+                    ))}
+                  </div>
+                  <span className={`status-pill ${statusClass}`}>
+                  {comingSoon ? statusLabel : available ? "Ready" : statusLabel}
+                </span>
+                  {comingSoon ? (
+                    <span className="btn btn-disabled" aria-disabled="true">
+                      Coming soon
+                    </span>
+                ) : available ? (
+                  <a
+                    className="btn btn-primary btn-block"
+                    href={`/api/download?platform=${p.id}`}
+                    download={p.id === "linux" ? APP.linuxDeb.filename : undefined}
+                  >
+                    Download .deb
+                    <IconArrowRight />
+                  </a>
+                  ) : (
+                    <a
+                      className="btn btn-ghost btn-block"
+                      href={`https://github.com/${APP.repo}/releases`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      View releases on GitHub
+                    </a>
+                  )}
+                </article>
+              </Reveal>
             );
           })}
         </div>
 
         {terminal && (
-          <div className="install-box" style={{ marginTop: "1.5rem" }}>
-            <h3 style={{ marginBottom: "0.5rem", fontSize: "1rem" }}>
-              {terminal.icon} {terminal.label}
-            </h3>
-            <p style={{ color: "var(--muted)", fontSize: "0.88rem", marginBottom: "0.75rem" }}>
-              {terminal.description}
-            </p>
-            <code>{terminal.installCommand}</code>
-            <div style={{ marginTop: "0.85rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-              <a className="btn btn-primary" href="/api/download?platform=terminal">
-                Run install script
-              </a>
-              <a
-                className="btn btn-ghost"
-                href={`https://github.com/${APP.repo}/blob/main/desktop/README.md`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Desktop build guide
-              </a>
+          <Reveal delay={300}>
+            <div className="install-box">
+              <div className="install-box-head">
+                <span className="install-icon">
+                  <TerminalIcon size={26} />
+                </span>
+                <div>
+                  <h3>{terminal.label}</h3>
+                  <p>{terminal.description}</p>
+                </div>
+              </div>
+              <code>{terminal.installCommand}</code>
+              <div className="install-actions">
+                <a className="btn btn-primary" href="/api/download?platform=terminal">
+                  Run install script
+                  <IconArrowRight />
+                </a>
+                <a
+                  className="btn btn-ghost"
+                  href={`https://github.com/${APP.repo}/blob/main/desktop/README.md`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Desktop build guide
+                </a>
+              </div>
             </div>
-          </div>
+          </Reveal>
         )}
 
         {data?.releaseUrl && (
-          <p style={{ textAlign: "center", marginTop: "1.25rem", color: "var(--muted)", fontSize: "0.85rem" }}>
+          <p className="release-link">
             All releases:{" "}
-            <a href={data.releaseUrl} style={{ color: "var(--accent)" }}>
-              {data.releaseUrl}
-            </a>
+            <a href={data.releaseUrl}>{data.releaseUrl}</a>
           </p>
         )}
       </div>

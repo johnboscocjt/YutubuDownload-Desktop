@@ -1,6 +1,7 @@
 import { kv } from "@vercel/kv";
-import { statsBaseline, type Platform } from "./config";
-import { githubAssetTotal, fetchLatestRelease } from "./github";
+import { type Platform } from "./config";
+import { githubAllReleasesTotal, fetchAllReleases } from "./github";
+import { incrementLocalStats, readLocalStats } from "./stats-store";
 
 const TOTAL_KEY = "stats:downloads:total";
 const PLATFORM_PREFIX = "stats:downloads:platform:";
@@ -18,15 +19,13 @@ export interface DownloadStats {
   byPlatform: Record<Platform, number>;
   updatedAt: string;
   live: boolean;
+  /** Where site clicks are stored: kv, local file, or none */
+  storage: "kv" | "local" | "none";
 }
 
-async function readPlatformCounts(): Promise<Record<Platform, number>> {
+async function readPlatformCountsFromKv(): Promise<Record<Platform, number>> {
   const platforms: Platform[] = ["linux", "windows", "macos", "terminal"];
   const out = {} as Record<Platform, number>;
-  if (!kvReady()) {
-    for (const p of platforms) out[p] = 0;
-    return out;
-  }
   await Promise.all(
     platforms.map(async (p) => {
       const v = await kv.get<number>(`${PLATFORM_PREFIX}${p}`);
@@ -37,36 +36,47 @@ async function readPlatformCounts(): Promise<Record<Platform, number>> {
 }
 
 export async function getDownloadStats(): Promise<DownloadStats> {
-  const baseline = statsBaseline();
-  const release = await fetchLatestRelease();
-  const githubRelease = githubAssetTotal(release?.assets ?? []);
+  const releases = await fetchAllReleases();
+  const githubRelease = githubAllReleasesTotal(releases);
 
   let siteTotal = 0;
   let byPlatform: Record<Platform, number>;
+  let storage: DownloadStats["storage"] = "none";
+  let updatedAt = new Date().toISOString();
 
   if (kvReady()) {
     siteTotal = (await kv.get<number>(TOTAL_KEY)) ?? 0;
-    byPlatform = await readPlatformCounts();
+    byPlatform = await readPlatformCountsFromKv();
+    storage = "kv";
   } else {
-    byPlatform = { linux: 0, windows: 0, macos: 0, terminal: 0 };
+    const local = await readLocalStats();
+    siteTotal = local.total;
+    byPlatform = local.byPlatform;
+    storage = "local";
+    updatedAt = local.updatedAt;
   }
 
   const siteTracked = siteTotal;
-  const total = baseline + siteTracked + githubRelease;
+  const total = siteTracked + githubRelease;
 
   return {
     total,
     siteTracked,
     githubRelease,
     byPlatform,
-    updatedAt: new Date().toISOString(),
-    live: kvReady(),
+    updatedAt,
+    live: kvReady() || storage === "local",
+    storage,
   };
 }
 
 export async function incrementDownload(platform: Platform): Promise<number> {
-  if (!kvReady()) return statsBaseline();
-  const total = await kv.incr(TOTAL_KEY);
-  await kv.incr(`${PLATFORM_PREFIX}${platform}`);
-  return total;
+  if (kvReady()) {
+    const total = await kv.incr(TOTAL_KEY);
+    await kv.incr(`${PLATFORM_PREFIX}${platform}`);
+    return total;
+  }
+
+  const local = await incrementLocalStats(platform);
+  return local.total;
 }

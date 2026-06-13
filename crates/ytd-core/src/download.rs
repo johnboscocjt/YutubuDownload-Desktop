@@ -58,6 +58,11 @@ impl DownloadManager {
             // Audio-only — do not fall back to full video ("best") before extract.
             return "bestaudio".into();
         }
+        if let Some(ref fmt) = config.video_format {
+            if !fmt.is_empty() {
+                return fmt.clone();
+            }
+        }
         build_video_format(config.requested_height.unwrap_or(720))
     }
 

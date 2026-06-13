@@ -31,3 +31,11 @@ React UI  →  Tauri commands  →  ytd-core  →  yt-dlp / ffmpeg
 ## Cross-platform
 
 Linux, Windows, and macOS use the same Rust core. Install hints for yt-dlp, ffmpeg, Deno, and Python cookies are shown in **Setup**.
+
+## Deeper dives
+
+| Guide | Topics |
+|-------|--------|
+| **Player & Download Performance** | mpv GTK embed, HTML fallback, scrubbing, concurrent fragments, non-blocking UI |
+| **Download Guide** | Quality verification, playlist/MP3 flows (with diagrams) |
+| **Desktop App Guide** | Screenshots of every page |

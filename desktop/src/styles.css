@@ -54,16 +54,13 @@ body {
   padding: 0.5rem 0.75rem 1.5rem;
 }
 
-.brand-mark {
+.brand-icon {
   width: 40px;
   height: 40px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, var(--accent), #0984e3);
-  display: grid;
-  place-items: center;
-  font-weight: 800;
-  font-size: 1.1rem;
-  color: var(--bg);
+  border-radius: 10px;
+  object-fit: contain;
+  flex-shrink: 0;
+  display: block;
 }
 
 .brand strong {
@@ -2284,26 +2281,67 @@ select:focus {
 }
 
 .mermaid-wrap {
-  margin: 1rem 0;
-  padding: 1rem;
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid var(--border);
+  margin: 1.25rem 0;
+  padding: 1.25rem 1rem;
+  background: rgba(8, 12, 22, 0.92);
+  border: 1px solid rgba(0, 212, 170, 0.22);
   border-radius: 12px;
   overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
-.mermaid-wrap svg {
-  max-width: 100%;
+.mermaid-wrap svg,
+.mermaid-wrap .mermaid-svg {
+  min-width: min(100%, 420px);
+  max-width: none;
   height: auto;
   display: block;
   margin: 0 auto;
 }
 
+.mermaid-wrap .node rect,
+.mermaid-wrap .node circle,
+.mermaid-wrap .node ellipse,
+.mermaid-wrap .node polygon,
+.mermaid-wrap .node path {
+  stroke-width: 1.5px;
+}
+
+.mermaid-wrap .edgePath path,
+.mermaid-wrap .flowchart-link {
+  stroke-width: 1.75px;
+  opacity: 0.95;
+}
+
+.mermaid-wrap .edgeLabel,
+.mermaid-wrap .labelBkg {
+  fill: #111827;
+}
+
+.mermaid-wrap .edgeLabel text,
+.mermaid-wrap .label text,
+.mermaid-wrap text {
+  fill: #f1f5f9 !important;
+  font-size: 15px !important;
+  font-family: Inter, "Segoe UI", system-ui, sans-serif !important;
+}
+
+.mermaid-wrap .cluster rect {
+  fill: rgba(17, 24, 39, 0.85) !important;
+  stroke: #334155 !important;
+}
+
 .mermaid-fallback {
-  font-size: 0.78rem;
-  color: var(--text-muted);
+  font-size: 0.82rem;
+  color: #fca5a5;
   white-space: pre-wrap;
   margin: 0;
+  padding: 0.75rem;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 8px;
 }
 
 .markdown-body div[align="center"] {

@@ -21,6 +21,7 @@ export interface ResolvedDownload {
   url: string;
   filename: string | null;
   available: boolean;
+  comingSoon: boolean;
   githubCount: number;
 }
 
@@ -34,6 +35,13 @@ function matchAsset(assets: GitHubAsset[], hints: string[]): GitHubAsset | null 
   return null;
 }
 
+/** Prefer .deb over AppImage when both exist. */
+function matchLinuxAsset(assets: GitHubAsset[]): GitHubAsset | null {
+  const deb = assets.find((a) => a.name.toLowerCase().endsWith(".deb"));
+  if (deb) return deb;
+  return matchAsset(assets, [".deb", "linux", "appimage"]);
+}
+
 export async function fetchLatestRelease(): Promise<GitHubRelease | null> {
   const res = await fetch(
     `https://api.github.com/repos/${APP.repo}/releases/latest`,
@@ -43,6 +51,18 @@ export async function fetchLatestRelease(): Promise<GitHubRelease | null> {
     }
   );
   if (!res.ok) return null;
+  return res.json();
+}
+
+export async function fetchAllReleases(): Promise<GitHubRelease[]> {
+  const res = await fetch(
+    `https://api.github.com/repos/${APP.repo}/releases?per_page=100`,
+    {
+      headers: { Accept: "application/vnd.github+json" },
+      next: { revalidate: 120 },
+    }
+  );
+  if (!res.ok) return [];
   return res.json();
 }
 
@@ -58,17 +78,48 @@ export async function resolveDownloads(): Promise<ResolvedDownload[]> {
         url: p.fallbackUrl,
         filename: "install.sh",
         available: true,
+        comingSoon: false,
         githubCount: 0,
       };
     }
 
-    const asset = matchAsset(assets, p.assetHints);
+    if (p.comingSoon) {
+      return {
+        platform: p.id,
+        label: p.label,
+        url: "",
+        filename: null,
+        available: false,
+        comingSoon: true,
+        githubCount: 0,
+      };
+    }
+
+    const asset =
+      p.id === "linux"
+        ? matchLinuxAsset(assets)
+        : matchAsset(assets, p.assetHints);
+
+    // Site-hosted .deb when GitHub Release is not published yet
+    if (p.id === "linux" && !asset) {
+      return {
+        platform: p.id,
+        label: p.label,
+        url: `/api/download?platform=linux`,
+        filename: APP.linuxDeb.filename,
+        available: true,
+        comingSoon: false,
+        githubCount: 0,
+      };
+    }
+
     return {
       platform: p.id,
       label: p.label,
       url: asset?.browser_download_url ?? p.fallbackUrl,
       filename: asset?.name ?? null,
       available: !!asset,
+      comingSoon: false,
       githubCount: asset?.download_count ?? 0,
     };
   });
@@ -76,4 +127,8 @@ export async function resolveDownloads(): Promise<ResolvedDownload[]> {
 
 export function githubAssetTotal(assets: GitHubAsset[]): number {
   return assets.reduce((sum, a) => sum + (a.download_count ?? 0), 0);
+}
+
+export function githubAllReleasesTotal(releases: GitHubRelease[]): number {
+  return releases.reduce((sum, r) => sum + githubAssetTotal(r.assets ?? []), 0);
 }

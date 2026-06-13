@@ -530,7 +530,10 @@ export default function App() {
       if (result.quality) {
         setQualityResolution(result.quality);
         setQualityMsg(result.quality.message);
-        if (result.quality.chosen_height) setHeight(result.quality.chosen_height);
+        const chosen = result.quality.chosen_height;
+        if (chosen != null && chosen < heightRef.current) {
+          setHeight(chosen);
+        }
       } else {
         setQualityMsg("Ready — pick a quality and start download");
       }
@@ -624,6 +627,15 @@ export default function App() {
         qualityInfoFromResolution(resolvedQuality, useMp3, usePlaylist, useHeight)
       );
 
+      const downloadHeight =
+        !useMp3 && resolvedQuality?.chosen_height != null
+          ? resolvedQuality.chosen_height
+          : useHeight;
+      const downloadFormat =
+        !useMp3 && resolvedQuality?.format_string
+          ? resolvedQuality.format_string
+          : undefined;
+
       if (usePlaylist && downloadUrl) {
         const total = meta?.entry_count ?? undefined;
         if (total) {
@@ -658,19 +670,20 @@ export default function App() {
         playlistTitle: playlistName,
         playlistId: meta?.playlist_id,
         entryCount: meta?.entry_count,
-        requestedHeight: useMp3 ? undefined : useHeight,
+        requestedHeight: useMp3 ? undefined : downloadHeight,
       });
       const id = await startDownload({
         url: downloadUrl,
         isPlaylist: usePlaylist,
         isMp3: useMp3,
         audioQuality: useMp3 ? "0" : undefined,
-        requestedHeight: useMp3 ? undefined : useHeight,
+        requestedHeight: useMp3 ? undefined : downloadHeight,
+        videoFormat: downloadFormat,
         outputDir: useOutputDir,
         usePlaylistFolder: usePlaylist,
         customFolderName: undefined,
         concurrentFragments,
-        skipQualityCheck: true,
+        skipQualityCheck: !downloadFormat,
         forceRedownload,
       });
       setJobId(id);
@@ -803,7 +816,15 @@ export default function App() {
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark">Y</div>
+          <img
+            className="brand-icon"
+            src="/icon.png"
+            srcSet="/icon-64.png 64w, /icon.png 128w"
+            sizes="40px"
+            alt=""
+            width={40}
+            height={40}
+          />
           <div>
             <strong>YutubuDownload</strong>
             <span>Desktop v2.0.1</span>

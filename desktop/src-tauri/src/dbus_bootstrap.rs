@@ -16,6 +16,11 @@ pub fn bootstrap() {
         return;
     }
 
+    // Desktop launcher may already start dbus-run-session; skip duplicate re-exec.
+    if std::env::var("YTD_SKIP_DBUS_BOOTSTRAP").is_ok() {
+        return;
+    }
+
     let dbus_run = match which::which("dbus-run-session") {
         Ok(p) => p,
         Err(_) => return,

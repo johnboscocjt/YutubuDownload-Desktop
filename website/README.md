@@ -1,16 +1,14 @@
 # YutubuDownload Website
 
-Modern landing page for [YutubuDownload](https://github.com/johnboscocjt/Youtube-Downloader-For-UbuntuTerminal) — deploy to **Vercel** in minutes.
+Modern landing page for [YutubuDownload Desktop](https://github.com/johnboscocjt/YutubuDownload-Desktop) — deploy to **Vercel** in minutes.
 
 ## Features
 
-- Platform downloads: **Linux**, **Windows**, **macOS**, plus **terminal** install script
+- Platform downloads: **Linux** (`.deb`), **Windows** and **macOS** (coming soon), plus **terminal** install script
+- Screenshot gallery for all six desktop screens
 - Auto-detects visitor OS and highlights the right download card
-- **Live download counter** (polls every 12s) combining:
-  - Baseline count (`NEXT_PUBLIC_STATS_BASELINE`)
-  - Site-tracked clicks via Vercel KV
-  - GitHub Release asset download counts
-- Pulls latest release assets from GitHub API automatically
+- **Live download counter** (polls every 12s): site-hosted downloads + GitHub Release asset counts (no fake baseline)
+- Pulls latest `.deb` from GitHub Releases on `YutubuDownload-Desktop`
 
 ## Deploy to Vercel
 
@@ -19,13 +17,13 @@ Modern landing page for [YutubuDownload](https://github.com/johnboscocjt/Youtube
 3. Set **Root Directory** to `website`
 4. Deploy
 
-### Enable live download tracking (recommended)
+### Enable live download tracking (recommended for production)
 
 1. In Vercel project → **Storage** → Create **KV** database
 2. Connect KV to the project (adds env vars automatically)
 3. Redeploy
 
-Optional: set `NEXT_PUBLIC_STATS_BASELINE` to seed the total (e.g. `5000`).
+**Local development:** Without KV, site-hosted download clicks are saved to `website/.data/download-stats.json` and persist across `npm run dev` restarts. The counter shows `storage: "local"` in `/api/stats`. GitHub Release downloads are pulled from the GitHub API.
 
 ## Local development
 
@@ -39,15 +37,21 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Desktop release assets
 
-When you publish desktop builds to GitHub Releases, name assets with hints the site recognizes:
+Publish desktop builds to **YutubuDownload-Desktop** GitHub Releases, or host the `.deb` on this site:
 
-| Platform | Filename hints |
-|----------|----------------|
-| Linux | `AppImage`, `.deb`, `linux` |
-| Windows | `.exe`, `.msi`, `windows` |
-| macOS | `.dmg`, `macos`, `darwin` |
+```bash
+# After building the desktop app:
+cp ../target/release/bundle/deb/YutubuDownload_*.deb public/downloads/
+```
 
-Until desktop assets exist, download buttons link to the latest GitHub Release page. Terminal install always works via `install.sh`.
+| Platform | Asset | Website behaviour |
+|----------|-------|-------------------|
+| Linux | `public/downloads/*.deb` or GitHub Release | **Download .deb** starts immediately |
+| Windows | — | Shows **Coming soon** |
+| macOS | — | Shows **Coming soon** |
+| Terminal | `install.sh` on terminal repo | Always available |
+
+Screenshots open **full screen** on click (lightbox).
 
 ## API routes
 
@@ -55,4 +59,4 @@ Until desktop assets exist, download buttons link to the latest GitHub Release p
 |-------|---------|
 | `GET /api/stats` | Live download statistics |
 | `GET /api/releases` | Latest release + resolved download URLs |
-| `GET /api/download?platform=linux` | Track click + redirect to file |
+| `GET /api/download?platform=linux` | Track click + redirect to `.deb` |

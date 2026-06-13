@@ -46,6 +46,7 @@ export interface DownloadJobConfig {
   isMp3: boolean;
   audioQuality?: string;
   requestedHeight?: number;
+  videoFormat?: string;
   outputDir: string;
   usePlaylistFolder: boolean;
   customFolderName?: string;

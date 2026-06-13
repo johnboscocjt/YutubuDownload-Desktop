@@ -28,39 +28,175 @@ pub fn fetch_available_video_heights(paths: &YtdPaths, url: &str) -> Result<Vec<
     Ok(heights)
 }
 
+/// Full download chain: H.264 first (in-app playback), then VP9/AV1 at exact height, then capped fallback.
 pub fn build_video_format(target: u32) -> String {
-    // Prefer H.264 so merged MP4s play in desktop WebView (AV1/HEVC often fail in WebKit).
     format!(
         "bestvideo[vcodec^=avc1][height={t}]+bestaudio[ext=m4a]/\
          bestvideo[vcodec^=avc][height={t}]+bestaudio/\
+         bestvideo[height={t}][vcodec^=vp9]+bestaudio/\
+         bestvideo[height={t}][vcodec^=av01]+bestaudio/\
+         bestvideo[height={t}]+bestaudio/\
          bestvideo[vcodec^=avc1][height<={t}]+bestaudio[ext=m4a]/\
          bestvideo[vcodec^=avc][height<={t}]+bestaudio/\
-         bestvideo[height={t}][ext=mp4]+bestaudio[ext=m4a]/\
-         bestvideo[height={t}]+bestaudio/\
-         best[height={t}][ext=mp4]/best[height<={t}]/best",
+         bestvideo[height<={t}]+bestaudio/\
+         best[height<={t}][ext=mp4]/best[height<={t}]",
         t = target
     )
 }
 
-/// Pick the best height at or below `requested` from available heights (no extra yt-dlp calls).
-fn pick_height_from_list(requested: u32, available: &[u32]) -> Option<u32> {
-    if available.is_empty() {
-        return None;
+/// H.264 at exact height (best for WebKit in-app playback).
+fn h264_exact_format(height: u32) -> String {
+    format!(
+        "bestvideo[vcodec^=avc1][height={h}]+bestaudio[ext=m4a]/\
+         bestvideo[vcodec^=avc][height={h}]+bestaudio/\
+         bestvideo[vcodec^=avc1][height={h}][ext=mp4]+bestaudio",
+        h = height
+    )
+}
+
+/// Any codec at exact height — most YouTube 1080p+ streams are VP9/AV1, not H.264.
+fn any_codec_exact_format(height: u32) -> String {
+    format!(
+        "bestvideo[height={h}][vcodec^=vp9]+bestaudio/\
+         bestvideo[height={h}][vcodec^=av01]+bestaudio/\
+         bestvideo[height={h}]+bestaudio/\
+         bestvideo[height={h}]/best[height={h}]",
+        h = height
+    )
+}
+
+/// Highest stream up to max height (no bare `/best` that can grab 360p).
+fn cap_format(max_height: u32) -> String {
+    format!(
+        "bestvideo[height<={h}]+bestaudio/\
+         bestvideo[vcodec^=avc1][height<={h}]+bestaudio/\
+         bestvideo[height<={h}]/best[height<={h}]",
+        h = max_height
+    )
+}
+
+/// What yt-dlp would actually fetch for this `-f` string (terminal script parity).
+pub fn probe_simulated_height(paths: &YtdPaths, url: &str, format_str: &str) -> Option<u32> {
+    let clean = crate::metadata::normalize_youtube_url(url);
+    let output = ytdlp_probe_output(
+        paths,
+        &clean,
+        false,
+        &["-f", format_str, "--simulate", "--print", "%(height)s"],
+    )?;
+    parse_heights(&output).into_iter().max()
+}
+
+struct SimulatedPick {
+    simulated_height: u32,
+    format_string: String,
+}
+
+fn try_exact_height(
+    paths: &YtdPaths,
+    url: &str,
+    format_str: &str,
+    target: u32,
+) -> Option<SimulatedPick> {
+    let simulated_height = probe_simulated_height(paths, url, format_str)?;
+    if simulated_height == target {
+        Some(SimulatedPick {
+            simulated_height,
+            format_string: format_str.to_string(),
+        })
+    } else {
+        None
     }
-    if available.contains(&requested) {
-        return Some(requested);
+}
+
+fn try_cap_height(
+    paths: &YtdPaths,
+    url: &str,
+    format_str: &str,
+    max_height: u32,
+) -> Option<SimulatedPick> {
+    let simulated_height = probe_simulated_height(paths, url, format_str)?;
+    if simulated_height > 0 && simulated_height <= max_height {
+        Some(SimulatedPick {
+            simulated_height,
+            format_string: format_str.to_string(),
+        })
+    } else {
+        None
     }
-    for h in STANDARD_HEIGHTS {
-        if h <= requested && available.contains(&h) {
-            return Some(h);
+}
+
+fn exact_format_strategies(height: u32) -> Vec<String> {
+    vec![
+        h264_exact_format(height),
+        any_codec_exact_format(height),
+    ]
+}
+
+/// Simulate formats in priority order — try exact 1080p+ (any codec) before lowering height.
+fn resolve_simulated_format(
+    paths: &YtdPaths,
+    url: &str,
+    requested: u32,
+    listed_heights: &[u32],
+) -> Option<SimulatedPick> {
+    // 1) Exact requested height: H.264 then VP9/AV1/any
+    for fmt in exact_format_strategies(requested) {
+        if let Some(pick) = try_exact_height(paths, url, &fmt, requested) {
+            return Some(pick);
         }
     }
-    available
+
+    // 2) Best verified stream up to requested cap (e.g. 1080 VP9 when exact match string differs)
+    let cap = cap_format(requested);
+    if let Some(pick) = try_cap_height(paths, url, &cap, requested) {
+        if pick.simulated_height == requested
+            || listed_heights.is_empty()
+            || listed_heights.contains(&pick.simulated_height)
+        {
+            return Some(pick);
+        }
+    }
+
+    // 3) Full format chain capped at requested
+    let full = build_video_format(requested);
+    if let Some(pick) = try_cap_height(paths, url, &full, requested) {
+        if pick.simulated_height == requested
+            || listed_heights.is_empty()
+            || listed_heights.contains(&pick.simulated_height)
+        {
+            return Some(pick);
+        }
+    }
+
+    // 4) Lower standard heights — only when requested height truly unavailable
+    for h in STANDARD_HEIGHTS {
+        if h >= requested {
+            continue;
+        }
+        for fmt in exact_format_strategies(h) {
+            if let Some(pick) = try_exact_height(paths, url, &fmt, h) {
+                return Some(pick);
+            }
+        }
+    }
+
+    let mut listed: Vec<u32> = listed_heights
         .iter()
         .copied()
         .filter(|h| *h <= requested)
-        .max()
-        .or_else(|| available.iter().copied().max())
+        .collect();
+    listed.sort_by(|a, b| b.cmp(a));
+    listed.dedup();
+    for h in listed {
+        for fmt in exact_format_strategies(h) {
+            if let Some(pick) = try_exact_height(paths, url, &fmt, h) {
+                return Some(pick);
+            }
+        }
+    }
+
+    None
 }
 
 pub fn resolve_video_quality(
@@ -82,24 +218,36 @@ pub fn resolve_video_quality(
         listed_heights.to_vec()
     };
 
-    let chosen = pick_height_from_list(requested, &available);
-    let confirmed = chosen == Some(requested);
+    if let Some(pick) = resolve_simulated_format(paths, url, requested, &available) {
+        let confirmed = pick.simulated_height == requested;
+        let message = if confirmed {
+            format!(
+                "{}p confirmed — will download at requested quality",
+                pick.simulated_height
+            )
+        } else {
+            format!(
+                "{requested}p is not available. Will download at {}p instead (verified with yt-dlp)",
+                pick.simulated_height
+            )
+        };
 
-    let message = match chosen {
-        Some(h) if h == requested => {
-            format!("{h}p confirmed — will download at requested quality")
-        }
-        Some(h) => format!("{requested}p is not available. Will download at {h}p instead"),
-        None => format!(
-            "Could not list qualities online. yt-dlp will try {requested}p first, then fall back if needed"
-        ),
-    };
+        return Ok(QualityResolution {
+            requested_height: requested,
+            chosen_height: Some(pick.simulated_height),
+            confirmed,
+            message,
+            format_string: pick.format_string,
+        });
+    }
 
     Ok(QualityResolution {
         requested_height: requested,
-        chosen_height: chosen,
-        confirmed,
-        message,
+        chosen_height: None,
+        confirmed: false,
+        message: format!(
+            "Could not verify quality online. yt-dlp will try {requested}p first, then fall back if needed"
+        ),
         format_string: build_video_format(requested),
     })
 }
@@ -125,12 +273,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn build_video_format_prefers_h264() {
+    fn build_video_format_includes_vp9_and_cap() {
         let f = build_video_format(1080);
         assert!(f.contains("vcodec^=avc1"));
-        assert!(f.contains("vcodec^=avc"));
-        assert!(f.contains("bestvideo[vcodec^=avc1][height<=1080]"));
-        assert!(f.contains("best[height<=1080]"));
+        assert!(f.contains("vcodec^=vp9"));
+        assert!(f.contains("height=1080"));
+        assert!(f.contains("height<=1080"));
+        assert!(!f.ends_with("/best"));
+    }
+
+    #[test]
+    fn any_codec_exact_has_no_bare_best() {
+        let f = any_codec_exact_format(2160);
+        assert!(f.contains("height=2160"));
+        assert!(f.contains("vp9"));
+        assert!(!f.ends_with("/best"));
     }
 
     #[test]
@@ -141,12 +298,9 @@ mod tests {
     }
 
     #[test]
-    fn pick_height_prefers_exact_match() {
-        assert_eq!(pick_height_from_list(480, &[720, 480, 360]), Some(480));
-    }
-
-    #[test]
-    fn pick_height_falls_back_to_lower() {
-        assert_eq!(pick_height_from_list(480, &[720, 360]), Some(360));
+    fn h264_exact_targets_height_only() {
+        let f = h264_exact_format(1440);
+        assert!(f.contains("[height=1440]"));
+        assert!(!f.contains("height<=1440"));
     }
 }

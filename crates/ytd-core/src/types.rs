@@ -67,6 +67,8 @@ pub struct DownloadJobConfig {
     pub skip_quality_check: bool,
     #[serde(default)]
     pub force_redownload: bool,
+    /// Verified `-f` string from quality resolution (used instead of rebuilding).
+    pub video_format: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

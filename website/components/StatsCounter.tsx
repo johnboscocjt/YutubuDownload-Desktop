@@ -15,14 +15,16 @@ export default function StatsCounter() {
     revalidateOnFocus: true,
   });
 
-  const total = data?.total ?? 1284;
+  const total = data?.total;
   const site = data?.siteTracked ?? 0;
   const github = data?.githubRelease ?? 0;
 
   return (
     <div className="stats-bar">
       <div className="stat">
-        <div className="stat-value">{format(total)}</div>
+        <div className="stat-value" data-value={total ?? 0}>
+          {total !== undefined ? format(total) : "—"}
+        </div>
         <div className="stat-label">Total downloads</div>
       </div>
       <div className="stat-divider" />
@@ -36,7 +38,7 @@ export default function StatsCounter() {
         <div className="stat-label">GitHub releases</div>
       </div>
       <div className="stat-divider" />
-      <div className="stat" style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+      <div className="stat stat-live">
         <span className="pulse-dot" aria-hidden />
         <div className="stat-label">Live</div>
       </div>

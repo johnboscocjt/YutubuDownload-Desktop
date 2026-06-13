@@ -1,18 +1,34 @@
 # YutubuDownload v2.0.1
 
-**Release date:** June 08, 2026  
-**Codename:** Multi-Instance Shared-Cookie Edition  
+**Release date:** June 2026  
+**Codename:** Desktop + Multi-Instance Shared-Cookie Edition  
 **Tag:** `v2.0.1`
 
 ---
 
 ## Summary
 
-v2.0.1 is the **latest stable release** of YutubuDownload (`ytd`). It fixes video ID detection on Bash, adds **stable video quality selection**, **loop download sessions**, stronger MP3 reliability, safe reinstall, and expanded documentation — all on top of the v2.0.0 multi-instance architecture.
+v2.0.1 is the **latest stable release** of YutubuDownload. It adds the **Tauri desktop app** (Linux `.deb`), in-app playback, download history with **Open playlist**, probe-verified quality, loop download sessions for terminal `ytd`, and expanded documentation with screenshots.
 
 ---
 
-## Highlights
+## Desktop app highlights (v2.0.1)
+
+| Feature | Detail |
+|---------|--------|
+| **Linux installer** | `.deb` for Ubuntu/Debian — Windows and macOS coming soon |
+| **Download** | Single video, full playlist, MP3; real playlist folder names |
+| **Play Completed** | In-app player (mpv), autoplay, loop, search and filters |
+| **History** | **Open playlist** in VLC/mpv; open file and destination |
+| **Setup** | Dependency check + cookie refresh |
+| **Settings** | Background playback; concurrent fragments (Tanzania-tuned) |
+| **Docs** | Full guides built into the app |
+
+See **[GUI_APP_GUIDE.md](GUI_APP_GUIDE.md)** for screenshots of every screen.
+
+---
+
+## Terminal highlights
 
 ### Stable Video Quality
 
@@ -154,4 +170,5 @@ ytd
 
 ---
 
-**Repository:** https://github.com/johnboscocjt/Youtube-Downloader-For-UbuntuTerminal
+**Repository (desktop):** https://github.com/johnboscocjt/YutubuDownload-Desktop  
+**Repository (terminal):** https://github.com/johnboscocjt/Youtube-Downloader-For-UbuntuTerminal

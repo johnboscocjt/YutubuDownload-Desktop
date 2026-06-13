@@ -3,9 +3,21 @@ export const APP = {
   tagline: "Tanzania-optimized YouTube downloader",
   version: "2.0.1",
   releaseTag: "v2.0.1",
-  repo: "johnboscocjt/Youtube-Downloader-For-UbuntuTerminal",
+  /** Desktop .deb / release assets */
+  repo: "johnboscocjt/YutubuDownload-Desktop",
+  /** Terminal install.sh lives here */
+  terminalRepo: "johnboscocjt/Youtube-Downloader-For-UbuntuTerminal",
   author: "Johnbosco",
   license: "MIT",
+  /** Site-hosted Linux installer (used when GitHub Release has no .deb yet) */
+  linuxDeb: {
+    filename: "YutubuDownload_2.0.1_amd64.deb",
+    publicPath: "/downloads/YutubuDownload_2.0.1_amd64.deb",
+    /** Debian package name (for apt remove) */
+    packageName: "yutubu-download",
+    /** Application menu name after install */
+    appMenuName: "YutubuDownload",
+  },
 } as const;
 
 export type Platform = "linux" | "windows" | "macos" | "terminal";
@@ -19,6 +31,7 @@ export interface PlatformInfo {
   assetHints: string[];
   fallbackUrl: string;
   installCommand?: string;
+  comingSoon?: boolean;
 }
 
 export const PLATFORMS: PlatformInfo[] = [
@@ -26,28 +39,30 @@ export const PLATFORMS: PlatformInfo[] = [
     id: "linux",
     label: "Linux",
     icon: "🐧",
-    description: "AppImage or .deb for Ubuntu, Debian, and most distros.",
-    formats: [".AppImage", ".deb"],
-    assetHints: ["appimage", "AppImage", ".deb", "linux"],
+    description: ".deb package for Ubuntu, Debian, and most distros.",
+    formats: [".deb"],
+    assetHints: [".deb", "amd64.deb", "linux"],
     fallbackUrl: `https://github.com/${APP.repo}/releases/latest`,
   },
   {
     id: "windows",
     label: "Windows",
     icon: "🪟",
-    description: "Portable .exe or NSIS installer for Windows 10/11.",
-    formats: [".exe", ".msi"],
+    description: "Desktop installer for Windows 10/11 — in development.",
+    formats: [".exe"],
     assetHints: ["windows", "win", ".exe", ".msi", "nsis"],
-    fallbackUrl: `https://github.com/${APP.repo}/releases/latest`,
+    fallbackUrl: "",
+    comingSoon: true,
   },
   {
     id: "macos",
     label: "macOS",
     icon: "🍎",
-    description: "Universal .dmg for Apple Silicon and Intel Macs.",
+    description: "Universal .dmg for Apple Silicon and Intel — in development.",
     formats: [".dmg"],
     assetHints: ["macos", "darwin", ".dmg", "apple"],
-    fallbackUrl: `https://github.com/${APP.repo}/releases/latest`,
+    fallbackUrl: "",
+    comingSoon: true,
   },
   {
     id: "terminal",
@@ -56,33 +71,39 @@ export const PLATFORMS: PlatformInfo[] = [
     description: "Classic `ytd` command for Ubuntu terminal — one-line install.",
     formats: ["install.sh"],
     assetHints: [],
-    fallbackUrl: `https://raw.githubusercontent.com/${APP.repo}/main/install.sh`,
-    installCommand: `sudo bash -c "$(curl -sL https://raw.githubusercontent.com/${APP.repo}/main/install.sh)"`,
+    fallbackUrl: `https://raw.githubusercontent.com/${APP.terminalRepo}/main/install.sh`,
+    installCommand: `sudo bash -c "$(curl -sL https://raw.githubusercontent.com/${APP.terminalRepo}/main/install.sh)"`,
   },
 ];
 
 export const FEATURES = [
   {
+    id: "probe" as const,
     title: "Probe-verified quality",
     body: "Your chosen resolution is confirmed with yt-dlp --simulate before download starts — no silent downgrades.",
   },
   {
+    id: "desktop" as const,
     title: "Desktop + terminal",
     body: "Modern desktop app with docs, history, and pause — or the battle-tested `ytd` terminal workflow.",
   },
   {
+    id: "signal" as const,
     title: "Tanzania-tuned reliability",
     body: "Low-network mode, cookie sharing, resume, and retries built for real-world mobile and shared Wi‑Fi.",
   },
   {
+    id: "playlist" as const,
     title: "Video, playlist & MP3",
     body: "Single videos, full playlists with numbered folders, and high-quality MP3 extraction.",
   },
   {
+    id: "layers" as const,
     title: "Multi-instance safe",
     body: "Run multiple downloads in parallel with shared cookies and session-isolated temp folders.",
   },
   {
+    id: "opensource" as const,
     title: "Open source",
     body: "MIT licensed. Rust core, Tauri desktop, and transparent docs you can read in-app.",
   },
@@ -94,8 +115,3 @@ export const STEPS = [
   { n: "3", title: "Download", body: "Probe-verified quality, progress tracking, pause/resume on Linux." },
 ];
 
-export function statsBaseline(): number {
-  const raw = process.env.NEXT_PUBLIC_STATS_BASELINE ?? "1284";
-  const n = parseInt(raw, 10);
-  return Number.isFinite(n) ? n : 1284;
-}

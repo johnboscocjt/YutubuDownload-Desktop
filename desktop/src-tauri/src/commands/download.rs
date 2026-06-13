@@ -36,6 +36,7 @@ pub async fn start_download(
             .await
             .map_err(|e| e.to_string())?;
             if let Ok(resolved) = resolve_video_quality(&paths, &config.url, h, &listed) {
+                config.video_format = Some(resolved.format_string.clone());
                 if let Some(chosen) = resolved.chosen_height {
                     config.requested_height = Some(chosen);
                 }

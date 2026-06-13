@@ -61,10 +61,10 @@ export function formatCompletedQuality(
   if (chosen == null) return null;
 
   if (quality.confirmed || chosen === requested) {
-    return `Downloaded at ${chosen}p`;
+    return `Downloaded at ${chosen}p (verified)`;
   }
 
-  if (requested != null) {
+  if (requested != null && chosen != null && chosen !== requested) {
     return `Downloaded at ${chosen}p (${requested}p was not available)`;
   }
 
