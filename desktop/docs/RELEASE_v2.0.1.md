@@ -66,7 +66,7 @@ Stay in one `ytd` session and paste multiple URLs without restarting.
 
 - **[DOWNLOAD_GUIDE.md](DOWNLOAD_GUIDE.md)** — Quality, single video, playlist, and MP3 flows with diagrams
 - Release history merged into `README.md` and full technical manual
-- Docs hub updated in `index.html`
+- Docs hub updated in `website/` landing page and in-app Docs tab
 
 ---
 

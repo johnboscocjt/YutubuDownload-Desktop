@@ -15,7 +15,26 @@ YutubuDownload Desktop is the Tauri GUI for this repository. Download and play v
 | `website/` | Next.js landing page and download site |
 | `Screenshots/desktop/` | Current UI screenshots for docs |
 
-## Quick Start (development)
+## Deploy the website (Vercel)
+
+The public site is **`website/`** (Next.js), **not** the repo root.
+
+| Wrong | Right |
+|-------|-------|
+| Root Directory = `.` (wrong — nothing useful deploys) | Root Directory = **`website`** |
+
+If https://ytddesktop.vercel.app does not show the new landing page, set Root Directory to `website` in Vercel — see **[VERCEL.md](VERCEL.md)**.
+
+```bash
+cd website && npm install && npm run dev   # http://localhost:3000
+```
+
+After building a `.deb`, copy it for the site download button:
+
+```bash
+cp target/release/bundle/deb/YutubuDownload_*.deb website/public/downloads/
+```
+
 
 ```bash
 cd desktop

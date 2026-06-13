@@ -1,6 +1,8 @@
 # YutubuDownload Website
 
-Modern landing page for [YutubuDownload Desktop](https://github.com/johnboscocjt/YutubuDownload-Desktop) — deploy to **Vercel** in minutes.
+Modern landing page for [YutubuDownload Desktop](https://github.com/johnboscocjt/YutubuDownload-Desktop).
+
+> **Important:** This folder (`website/`) is the live site. On Vercel, **Root Directory must be `website`** — see [../VERCEL.md](../VERCEL.md).
 
 ## Features
 
@@ -12,10 +14,15 @@ Modern landing page for [YutubuDownload Desktop](https://github.com/johnboscocjt
 
 ## Deploy to Vercel
 
-1. Push this repo to GitHub
-2. Go to [vercel.com/new](https://vercel.com/new) → Import repository
-3. Set **Root Directory** to `website`
-4. Deploy
+1. Push this repo to GitHub (`YutubuDownload-Desktop`)
+2. [vercel.com/new](https://vercel.com/new) → Import the repository
+3. **Root Directory → Edit → set to `website`** (required — do not leave as `.`)
+4. Framework: **Next.js** (auto-detected)
+5. Deploy
+
+If Root Directory is wrong, Vercel will not build this Next.js app.
+
+Full troubleshooting: [../VERCEL.md](../VERCEL.md)
 
 ### Enable live download tracking (recommended for production)
 

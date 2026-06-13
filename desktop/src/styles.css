@@ -2299,38 +2299,31 @@ select:focus {
   height: auto;
   display: block;
   margin: 0 auto;
+  shape-rendering: geometricPrecision;
+  text-rendering: optimizeLegibility;
 }
 
-.mermaid-wrap .node rect,
-.mermaid-wrap .node circle,
-.mermaid-wrap .node ellipse,
-.mermaid-wrap .node polygon,
-.mermaid-wrap .node path {
-  stroke-width: 1.5px;
-}
-
-.mermaid-wrap .edgePath path,
-.mermaid-wrap .flowchart-link {
-  stroke-width: 1.75px;
-  opacity: 0.95;
-}
-
-.mermaid-wrap .edgeLabel,
-.mermaid-wrap .labelBkg {
-  fill: #111827;
-}
-
+/* Flowchart labels */
+.mermaid-wrap .nodeLabel text,
 .mermaid-wrap .edgeLabel text,
-.mermaid-wrap .label text,
-.mermaid-wrap text {
-  fill: #f1f5f9 !important;
-  font-size: 15px !important;
-  font-family: Inter, "Segoe UI", system-ui, sans-serif !important;
+.mermaid-wrap .cluster-label text {
+  fill: #f8fafc;
+  font-size: 14px;
+  font-family: Inter, "Segoe UI", system-ui, sans-serif;
+}
+
+/* Sequence labels — scoped so marker paths are untouched */
+.mermaid-wrap .messageText,
+.mermaid-wrap .loopText,
+.mermaid-wrap .actor tspan {
+  fill: #e2e8f0;
+  font-size: 14px;
+  font-family: Inter, "Segoe UI", system-ui, sans-serif;
 }
 
 .mermaid-wrap .cluster rect {
-  fill: rgba(17, 24, 39, 0.85) !important;
-  stroke: #334155 !important;
+  fill: rgba(17, 24, 39, 0.85);
+  stroke: #334155;
 }
 
 .mermaid-fallback {
