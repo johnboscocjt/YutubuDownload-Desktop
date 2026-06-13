@@ -1,6 +1,6 @@
 [Desktop Entry]
-Name=YutubuDownload
-Comment=Youtube downloader with in-app playback (wrapped with D-Bus session)
+Name=YutubuDownload (Terminal)
+Comment=Terminal workflow — run ytd in a shell (separate from the desktop GUI app)
 Exec=dbus-run-session -- /usr/local/bin/yutubu-download %U
 Icon=yutubu-download
 Type=Application

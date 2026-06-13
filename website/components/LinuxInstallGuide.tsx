@@ -43,9 +43,9 @@ const UPDATE_STEPS = {
 
 const UNINSTALL_STEPS = {
   title: "Uninstall",
-  body: `Removes the app, menu entry, launcher, and icons. Your downloaded videos are not deleted.`,
+  body: `Removes only the desktop GUI package (menu entry, launcher, icons). Does not remove the terminal ytd command if you installed it separately.`,
   code: `sudo apt remove --purge ${linuxDeb.packageName}\nsudo apt autoremove -y\ndpkg -l ${linuxDeb.packageName}`,
-  note: "Should print: no packages found matching yutubu-download",
+  note: "Should print: no packages found matching yutubu-download. Your videos and ~/.config/YutubuDownload cookies are kept.",
 };
 
 const TROUBLESHOOT = [
@@ -60,6 +60,14 @@ const TROUBLESHOOT = [
   {
     q: "dpkg reports missing dependencies?",
     a: "Run sudo apt-get install -f -y after dpkg -i to install required libraries automatically.",
+  },
+  {
+    q: "Using both the desktop app and terminal ytd?",
+    a: "They are designed to coexist. Install either order — the .deb no longer removes ytd. Shared cookies live in ~/.config/YutubuDownload; desktop saves go to ~/YutubuDownload-Desktop. If ytd disappeared after an older .deb, re-run the terminal install.sh.",
+  },
+  {
+    q: "ytd command missing after installing the .deb?",
+    a: "Reinstall the CLI: sudo bash -c \"$(curl -sL https://raw.githubusercontent.com/johnboscocjt/Youtube-Downloader-For-UbuntuTerminal/main/install.sh)\" — safe to repeat; it will not remove the desktop app.",
   },
 ];
 
@@ -81,7 +89,8 @@ export default function LinuxInstallGuide() {
             <h2>Install &amp; uninstall</h2>
             <p>
               Step-by-step for Ubuntu, Debian, and other distros that use .deb
-              packages.
+              packages. Safe alongside the terminal <code>ytd</code> command — they
+              do not remove each other.
             </p>
             <p className="guide-package-pill">
               Package name: <code>{linuxDeb.packageName}</code>

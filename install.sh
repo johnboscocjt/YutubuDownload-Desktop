@@ -251,9 +251,9 @@ else
     exit 1
 fi
 
-# Optional: install D-Bus launcher wrapper and desktop entry for GUI launchers
+# Optional: D-Bus wrapper + menu entry for terminal workflow (never removes desktop .deb)
 echo ""
-print_loading "   🔧 Installing desktop launcher and D-Bus wrapper"
+print_loading "   🔧 Installing terminal launcher and optional menu entry"
 if [ -f "$INSTALLER_DIR/desktop/launch-with-dbus.sh" ]; then
     cp "$INSTALLER_DIR/desktop/launch-with-dbus.sh" /usr/local/bin/yutubu-launch
     chmod a+rx /usr/local/bin/yutubu-launch
@@ -263,15 +263,24 @@ else
 fi
 
 if [ -f "$INSTALLER_DIR/desktop/yutubu-download.desktop.template" ]; then
-    # Prepare desktop file and set Exec to use installed binary via the wrapper
-    DESKTOP_OUT="/usr/share/applications/yutubu-download.desktop"
-    sed "s|Exec=.*|Exec=/usr/local/bin/yutubu-launch /usr/local/bin/YutubuDownload %U|" \
+    # Coexist with packaged GUI at /usr/bin/yutubu-download — separate menu name + file.
+    if [ -x /usr/bin/yutubu-download ]; then
+        DESKTOP_OUT="/usr/share/applications/yutubu-download-terminal.desktop"
+        DESKTOP_NAME="YutubuDownload (Terminal)"
+        rm -f /usr/share/applications/yutubu-download.desktop 2>/dev/null || true
+        echo "   ℹ️  Desktop GUI detected — keeping ytd CLI; terminal menu entry is separate."
+    else
+        DESKTOP_OUT="/usr/share/applications/yutubu-download.desktop"
+        DESKTOP_NAME="YutubuDownload"
+    fi
+    sed -e "s|^Name=.*|Name=${DESKTOP_NAME}|" \
+        -e "s|Exec=.*|Exec=/usr/local/bin/yutubu-launch /usr/local/bin/YutubuDownload %U|" \
         "$INSTALLER_DIR/desktop/yutubu-download.desktop.template" > /tmp/yutubu-download.desktop
     mv /tmp/yutubu-download.desktop "$DESKTOP_OUT"
     chmod a+r "$DESKTOP_OUT"
-    echo "   ✅ Installed desktop entry: $DESKTOP_OUT"
+    echo "   ✅ Installed menu entry: $DESKTOP_OUT"
 else
-    echo "   ⚠️  Desktop template not found in repo (skipping)"
+    echo "   ⚠️  Desktop template not found in repo (skipping menu entry)"
 fi
 
 
