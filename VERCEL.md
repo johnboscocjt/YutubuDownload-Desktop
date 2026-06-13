@@ -45,12 +45,19 @@ npm run start   # http://localhost:3000
 
 GitHub Actions workflow **Website CI** (`.github/workflows/website.yml`) builds `website/` on every push. If that passes but Vercel still 404s, the problem is Vercel project settings above.
 
-## Optional: live download counter (KV)
+## Download counter storage
 
-1. Vercel project → **Storage** → add **Upstash Redis** (replaces deprecated KV)
-2. Connect to project → redeploy
+Site download clicks are stored in **Vercel Blob** (`stats/download-stats.json`). The project uses blob store **`yutubu-stats-prod`**, linked with `BLOB_READ_WRITE_TOKEN`.
 
-Without storage, `/api/stats` still works using ephemeral local fallback in dev; on Vercel serverless, site click counts may reset between invocations unless Redis is connected.
+`/api/stats` returns `"storage": "blob"` when persistence is working. If counts stay at `0` on production:
+
+1. Vercel project → **Storage** → ensure a **Blob** store is **connected** to **ytddesktop**
+2. Confirm env var **`BLOB_READ_WRITE_TOKEN`** exists (do not set a conflicting `BLOB_STORE_ID` for a different store)
+3. **Redeploy** after connecting storage
+
+Optional upgrade: connect **Upstash Redis** instead — the app will prefer Redis when `KV_REST_API_URL` / `UPSTASH_REDIS_REST_URL` env vars are set.
+
+Local dev: `vercel env pull` in `website/`, or counts are saved to `website/.data/download-stats.json` without Blob credentials.
 
 ## After building a new `.deb`
 
