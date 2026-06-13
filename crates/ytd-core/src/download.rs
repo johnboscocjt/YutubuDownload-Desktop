@@ -55,7 +55,8 @@ impl DownloadManager {
 
     pub fn build_format_string(config: &DownloadJobConfig) -> String {
         if config.is_mp3 {
-            return "bestaudio/best".into();
+            // Audio-only — do not fall back to full video ("best") before extract.
+            return "bestaudio".into();
         }
         build_video_format(config.requested_height.unwrap_or(720))
     }

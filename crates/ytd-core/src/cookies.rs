@@ -80,19 +80,31 @@ fn python_candidates(paths: &YtdPaths) -> Vec<String> {
     candidates
 }
 
+const COOKIE_EXPORT_TIMEOUT_SECS: u64 = 10;
+
 fn export_shared_cookies(paths: &YtdPaths) -> Result<()> {
     paths.ensure_dirs()?;
-    let cookie_path = paths.cookie_file.to_string_lossy();
+    let cookie_path = paths.cookie_file.to_string_lossy().to_string();
 
     for python in python_candidates(paths) {
-        let output = Command::new(&python)
-            .arg("-c")
-            .arg(COOKIE_EXPORT_SCRIPT)
-            .arg(cookie_path.as_ref())
-            .output();
+        let python = python.clone();
+        let cookie_path = cookie_path.clone();
+        let output = std::thread::scope(|scope| {
+            let (tx, rx) = std::sync::mpsc::channel();
+            scope.spawn(move || {
+                let out = Command::new(&python)
+                    .arg("-c")
+                    .arg(COOKIE_EXPORT_SCRIPT)
+                    .arg(&cookie_path)
+                    .output();
+                let _ = tx.send(out);
+            });
+            rx.recv_timeout(Duration::from_secs(COOKIE_EXPORT_TIMEOUT_SECS))
+                .ok()
+        });
 
         match output {
-            Ok(out) if out.status.success() => {
+            Some(Ok(out)) if out.status.success() => {
                 #[cfg(unix)]
                 {
                     use std::os::unix::fs::PermissionsExt;
@@ -104,10 +116,10 @@ fn export_shared_cookies(paths: &YtdPaths) -> Result<()> {
                 }
                 return Ok(());
             }
-            Ok(out) => {
+            Some(Ok(out)) => {
                 let _stderr = String::from_utf8_lossy(&out.stderr);
             }
-            Err(_) => continue,
+            Some(Err(_)) | None => continue,
         }
     }
 
@@ -161,5 +173,9 @@ pub fn refresh_cookie_store(paths: &YtdPaths, force: bool) -> Result<String> {
 }
 
 pub fn ensure_cookie_store(paths: &YtdPaths) -> Result<()> {
-    refresh_cookie_store(paths, false).map(|_| ())
+    paths.ensure_dirs()?;
+    if paths.cookie_file.is_file() {
+        return Ok(());
+    }
+    write_fallback_cookies(paths)
 }

@@ -106,6 +106,8 @@ export interface HistoryEntry {
   requestedHeight?: number;
   filePath?: string;
   children?: HistoryChild[];
+  /** Absolute path to `Title [PLAYLIST_ID]/` on disk — used for playback lookup. */
+  playlistFolder?: string;
 }
 
 export interface PlayableFile {

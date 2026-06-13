@@ -59,7 +59,10 @@ fn parse_probe_lines(raw: &str) -> impl Iterator<Item = &str> {
 fn fetch_playlist_metadata(paths: &YtdPaths, url: &str) -> Result<MetadataInfo> {
     let video_id = extract_video_id(url);
     let playlist_id = extract_playlist_id(url);
-    let probe_url = normalize_youtube_url(url);
+    let probe_url = playlist_id
+        .as_ref()
+        .map(|id| format!("https://www.youtube.com/playlist?list={id}"))
+        .unwrap_or_else(|| normalize_youtube_url(url));
 
     let mut playlist_title: Option<String> = None;
     let mut entry_count: Option<u32> = None;
@@ -85,7 +88,7 @@ fn fetch_playlist_metadata(paths: &YtdPaths, url: &str) -> Result<MetadataInfo> 
     if playlist_title.as_ref().is_none_or(|s| s.is_empty()) {
         if let Some(raw) = ytdlp_probe_output(
             paths,
-            &probe_url,
+            &normalize_youtube_url(url),
             true,
             &["--playlist-end", "1", "--print", "%(playlist_title)s"],
         ) {
@@ -94,23 +97,8 @@ fn fetch_playlist_metadata(paths: &YtdPaths, url: &str) -> Result<MetadataInfo> 
     }
 
     if entry_count.is_none() {
-        if let Some(raw) = ytdlp_probe_output(
-            paths,
-            &probe_url,
-            true,
-            &["--flat-playlist", "--print", "%(id)s"],
-        ) {
-            let count = raw.lines().filter(|l| !l.trim().is_empty()).count();
-            if count > 0 {
-                entry_count = Some(count as u32);
-            }
-        }
-    }
-
-    if playlist_title.is_none() && entry_count.is_none() {
-        return Err(crate::error::YtdError::YtdlpFailed(
-            "Could not fetch playlist info — check the URL is public and try again".into(),
-        ));
+        // Avoid scanning the entire playlist just to count entries (very slow on large lists).
+        // entry_count may stay None; download still works and the UI fills in during progress.
     }
 
     let playlist_title = playlist_title.or_else(|| {
@@ -118,6 +106,12 @@ fn fetch_playlist_metadata(paths: &YtdPaths, url: &str) -> Result<MetadataInfo> 
             .as_ref()
             .map(|id| default_playlist_folder_label("Playlist", id))
     });
+
+    if playlist_title.is_none() {
+        return Err(crate::error::YtdError::YtdlpFailed(
+            "Could not fetch playlist info — check the URL is public and try again".into(),
+        ));
+    }
 
     Ok(MetadataInfo {
         video_id: video_id.clone(),

@@ -1,9 +1,12 @@
 import { fetchMetadata, scanPartialPlaylists } from "./api";
 import { loadHistory, saveHistory } from "./history";
 import {
+  isPlaceholderPlaylistTitle,
   playlistDisplayTitle,
+  playlistFolderPath,
   resolveHistoryStatus,
   resolveTrackTitle,
+  titleFromPlaylistFolderPath,
 } from "./playlistProgress";
 import type { HistoryChild, HistoryEntry, PlaylistTrackItem } from "./types";
 
@@ -99,11 +102,22 @@ export function buildHistoryEntryFromDownload(params: {
       }))
     : undefined;
 
+  const folderHint =
+    trackSource.find((item) => item.filePath)?.filePath ??
+    outputFile ??
+    progressOutputFile ??
+    lastOutputFile;
+
+  const playlistFolderPathResolved = active.isPlaylist
+    ? playlistFolderPath(outputDir, folderHint) ?? undefined
+    : undefined;
+
   const displayTitle = active.isPlaylist
     ? playlistDisplayTitle(
         active.playlistTitle,
         active.title,
-        active.playlistId
+        active.playlistId,
+        folderHint
       )
     : resolveTrackTitle(
         progressTitle ?? active.title,
@@ -126,6 +140,7 @@ export function buildHistoryEntryFromDownload(params: {
     isMp3: active.isMp3,
     requestedHeight: active.requestedHeight,
     filePath,
+    playlistFolder: playlistFolderPathResolved,
     itemCount: totalCount ?? children?.length,
     children: children?.length ? children : undefined,
   };

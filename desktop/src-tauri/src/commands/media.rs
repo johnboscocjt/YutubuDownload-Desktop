@@ -225,22 +225,63 @@ fn score_match(file: &Path, hint: &PlayableHint) -> i32 {
     score
 }
 
+fn hint_prefers_audio(hint: &PlayableHint, candidates: &[PathBuf]) -> bool {
+    if let Some(ref saved) = hint.file_path {
+        let path = Path::new(saved);
+        if is_audio_path(path) {
+            return true;
+        }
+        if is_video_container(path) {
+            return false;
+        }
+    }
+
+    let Some(idx) = hint.item_index else {
+        return false;
+    };
+    let idx_padded = format!("{idx:02}");
+    let idx_plain = idx.to_string();
+    let index_matches: Vec<&PathBuf> = candidates
+        .iter()
+        .filter(|p| {
+            let Some(fname) = p.file_name().and_then(|n| n.to_str()) else {
+                return false;
+            };
+            fname.starts_with(&format!("{idx_padded} -"))
+                || fname.starts_with(&format!("{idx_plain} -"))
+        })
+        .collect();
+    !index_matches.is_empty() && index_matches.iter().all(|p| is_audio_path(p))
+}
+
+fn path_has_video_stream(path: &Path) -> bool {
+    if is_audio_path(path) {
+        return false;
+    }
+    has_video_stream(path)
+}
+
 fn pick_best(candidates: &[PathBuf], hint: &PlayableHint) -> Option<PathBuf> {
     let mut cleaned = hint.clone();
     cleaned.title = clean_display_title(&hint.title);
+    let prefer_audio = hint_prefers_audio(&cleaned, candidates);
 
     let mut scored: Vec<(PathBuf, i32, bool, u64)> = candidates
         .iter()
         .map(|p| {
             let mut score = score_match(p, &cleaned);
-            if is_video_container(p) {
+            let has_video = path_has_video_stream(p);
+            if is_audio_path(p) && prefer_audio {
+                score += 160;
+            }
+            if is_video_container(p) && !prefer_audio {
                 score += 120;
             }
-            if has_video_stream(p) {
+            if has_video && !prefer_audio {
                 score += 80;
             }
             let size = file_size(p);
-            (p.clone(), score, has_video_stream(p), size)
+            (p.clone(), score, has_video, size)
         })
         .filter(|(_, s, _, _)| *s > 0)
         .collect();
@@ -248,7 +289,13 @@ fn pick_best(candidates: &[PathBuf], hint: &PlayableHint) -> Option<PathBuf> {
     if !scored.is_empty() {
         scored.sort_by(|a, b| {
             b.1.cmp(&a.1)
-                .then_with(|| b.2.cmp(&a.2))
+                .then_with(|| {
+                    if prefer_audio {
+                        a.2.cmp(&b.2)
+                    } else {
+                        b.2.cmp(&a.2)
+                    }
+                })
                 .then_with(|| b.3.cmp(&a.3))
         });
         return Some(scored[0].0.clone());
@@ -265,14 +312,20 @@ fn pick_best(candidates: &[PathBuf], hint: &PlayableHint) -> Option<PathBuf> {
             let stem = p.file_stem()?.to_str()?;
             let n_stem = normalize(stem);
             if n_stem.contains(&n_title) || n_title.contains(&n_stem) {
-                Some((p.clone(), has_video_stream(p), file_size(p)))
+                Some((p.clone(), path_has_video_stream(p), file_size(p)))
             } else {
                 None
             }
         })
         .collect();
 
-    fallback.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| b.2.cmp(&a.2)));
+    fallback.sort_by(|a, b| {
+        if prefer_audio {
+            a.1.cmp(&b.1).then_with(|| b.2.cmp(&a.2))
+        } else {
+            b.1.cmp(&a.1).then_with(|| b.2.cmp(&a.2))
+        }
+    });
     fallback.first().map(|(p, _, _)| p.clone())
 }
 
@@ -286,9 +339,11 @@ fn is_audio_path(path: &Path) -> bool {
 }
 
 #[tauri::command]
-pub fn resolve_playable_files(
+pub fn resolve_playable_files_inner(
     output_dir: String,
     hints: Vec<PlayableHint>,
+    search_folder: Option<String>,
+    playlist_id: Option<String>,
 ) -> Result<Vec<PlayableFile>, String> {
     let root = PathBuf::from(&output_dir);
     if !root.is_dir() {
@@ -296,7 +351,24 @@ pub fn resolve_playable_files(
     }
 
     let mut candidates = Vec::new();
-    collect_media_files(&root, &mut candidates, 0);
+    if let Some(folder) = search_folder {
+        let folder_path = PathBuf::from(folder);
+        if folder_path.is_dir() {
+            collect_media_files(&folder_path, &mut candidates, 0);
+        }
+    }
+    if candidates.is_empty() {
+        if let Some(ref id) = playlist_id {
+            if let Ok(paths) = find_playlist_folder_media(&root, id) {
+                for path in paths {
+                    candidates.push(PathBuf::from(path));
+                }
+            }
+        }
+    }
+    if candidates.is_empty() {
+        collect_media_files(&root, &mut candidates, 0);
+    }
 
     if candidates.is_empty() {
         return Ok(vec![]);
@@ -309,7 +381,7 @@ pub fn resolve_playable_files(
             if p.is_file() && is_media(&p) && !is_ytdlp_fragment_name(
                 p.file_name().and_then(|n| n.to_str()).unwrap_or(""),
             ) {
-                let audio_only = is_audio_path(&p) && !has_video_stream(&p);
+                let audio_only = is_audio_path(&p);
                 results.push(PlayableFile {
                     path: saved.clone(),
                     title: playable_title(&p, &hint),
@@ -322,7 +394,7 @@ pub fn resolve_playable_files(
         // Ignore stale yt-dlp fragment paths saved during download (e.g. .f140)
 
         if let Some(best) = pick_best(&candidates, &hint) {
-            let audio_only = is_audio_path(&best) && !has_video_stream(&best);
+            let audio_only = is_audio_path(&best);
             results.push(PlayableFile {
                 path: best.to_string_lossy().into_owned(),
                 title: playable_title(&best, &hint),
@@ -334,6 +406,20 @@ pub fn resolve_playable_files(
 
     results.sort_by_key(|f| f.item_index.unwrap_or(0));
     Ok(results)
+}
+
+#[tauri::command]
+pub async fn resolve_playable_files(
+    output_dir: String,
+    hints: Vec<PlayableHint>,
+    search_folder: Option<String>,
+    playlist_id: Option<String>,
+) -> Result<Vec<PlayableFile>, String> {
+    tokio::task::spawn_blocking(move || {
+        resolve_playable_files_inner(output_dir, hints, search_folder, playlist_id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 fn playback_staging_dir() -> PathBuf {
@@ -566,6 +652,118 @@ pub fn open_media_file(app: tauri::AppHandle, path: String) -> Result<(), String
     app.opener()
         .open_path(path, None::<&str>)
         .map_err(|e| e.to_string())
+}
+
+fn media_paths_in_playlist_folder(folder: &Path) -> Result<Vec<String>, String> {
+    let scan = scan_playlist_folder(folder).ok_or_else(|| {
+        format!(
+            "Playlist folder not found or empty: {}",
+            folder.to_string_lossy()
+        )
+    })?;
+    Ok(scan.children.into_iter().map(|c| c.path).collect())
+}
+
+fn find_playlist_folder_media(root: &Path, playlist_id: &str) -> Result<Vec<String>, String> {
+    let suffix = format!(" [{playlist_id}]");
+    let entries = std::fs::read_dir(root).map_err(|e| e.to_string())?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if name.ends_with(&suffix) {
+            return media_paths_in_playlist_folder(&path);
+        }
+    }
+    Err(format!("No playlist folder found for {playlist_id}"))
+}
+
+fn write_m3u_playlist(paths: &[String]) -> Result<PathBuf, String> {
+    let mut hasher = DefaultHasher::new();
+    for path in paths {
+        path.hash(&mut hasher);
+    }
+    let stamp = std::time::SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let file_name = format!("yutubu-playlist-{:x}-{stamp}.m3u", hasher.finish());
+    let m3u_path = std::env::temp_dir().join(file_name);
+    let mut body = String::from("#EXTM3U\n");
+    for path in paths {
+        body.push_str(path);
+        body.push('\n');
+    }
+    std::fs::write(&m3u_path, body).map_err(|e| e.to_string())?;
+    Ok(m3u_path)
+}
+
+fn open_paths_in_system_player(app: &tauri::AppHandle, paths: Vec<String>) -> Result<(), String> {
+    if paths.is_empty() {
+        return Err("No playable files found for this playlist.".into());
+    }
+    if paths.len() == 1 {
+        return open_media_file(app.clone(), paths[0].clone());
+    }
+
+    let m3u_path = write_m3u_playlist(&paths)?;
+    let m3u_str = m3u_path.to_string_lossy().into_owned();
+
+    if which::which("mpv").is_ok() {
+        let status = Command::new("mpv")
+            .args(["--no-terminal", "--force-window=yes", &format!("--playlist={m3u_str}")])
+            .spawn();
+        if status.is_ok() {
+            return Ok(());
+        }
+    }
+
+    app.opener()
+        .open_path(&m3u_str, None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn open_playlist_in_system_player(
+    app: tauri::AppHandle,
+    output_dir: String,
+    hints: Vec<PlayableHint>,
+    folder_path: Option<String>,
+    playlist_id: Option<String>,
+) -> Result<(), String> {
+    let mut paths: Vec<String> = resolve_playable_files_inner(
+        output_dir.clone(),
+        hints,
+        folder_path.clone(),
+        playlist_id.clone(),
+    )?
+        .into_iter()
+        .map(|f| f.path)
+        .collect();
+
+    if paths.is_empty() {
+        if let Some(folder) = folder_path {
+            let folder_path = PathBuf::from(folder);
+            if folder_path.is_dir() {
+                paths = media_paths_in_playlist_folder(&folder_path)?;
+            }
+        }
+    }
+
+    if paths.is_empty() {
+        if let Some(id) = playlist_id {
+            let root = PathBuf::from(&output_dir);
+            if root.is_dir() {
+                paths = find_playlist_folder_media(&root, &id).unwrap_or_default();
+            }
+        }
+    }
+
+    open_paths_in_system_player(&app, paths)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

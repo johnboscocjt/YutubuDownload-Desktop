@@ -1,4 +1,8 @@
 import type { HistoryEntry } from "./types";
+import {
+  isPlaceholderPlaylistTitle,
+  titleFromPlaylistFolderPath,
+} from "./playlistProgress";
 
 const HISTORY_KEY = "yutubu-download-history";
 const MAX_ENTRIES = 50;
@@ -13,9 +17,32 @@ export function fileBasename(path?: string): string {
   return parts[parts.length - 1] || "";
 }
 
-export function entryDisplayTitle(entry: Pick<HistoryEntry, "title" | "filePath">): string {
+const VIDEO_MEDIA_RE = /\.(mp4|webm|mkv|mov|avi|m4v)$/i;
+const AUDIO_MEDIA_RE = /\.(mp3|m4a|opus|wav|aac|flac|ogg)$/i;
+
+/** Pick HTML audio vs embedded mpv — file type wins over history flags. */
+export function preferAudioPlayer(
+  path: string,
+  entryIsMp3?: boolean,
+  probeIsAudio?: boolean
+): boolean {
+  if (VIDEO_MEDIA_RE.test(path)) return false;
+  if (AUDIO_MEDIA_RE.test(path)) return true;
+  return Boolean(entryIsMp3 || probeIsAudio);
+}
+
+export function entryDisplayTitle(
+  entry: Pick<HistoryEntry, "title" | "filePath" | "children" | "isPlaylist">
+): string {
   const fromFile = fileBasename(entry.filePath);
-  return fromFile || entry.title;
+  if (fromFile) return fromFile;
+  if (entry.isPlaylist) {
+    const folderHint = entry.children?.find((c) => c.filePath)?.filePath;
+    const fromFolder = titleFromPlaylistFolderPath(folderHint);
+    if (fromFolder) return fromFolder;
+    if (!isPlaceholderPlaylistTitle(entry.title)) return entry.title;
+  }
+  return entry.title;
 }
 
 export function entryMetaLabel(entry: Pick<HistoryEntry, "title" | "filePath">): string | undefined {
@@ -68,6 +95,19 @@ export function prependHistory(entry: HistoryEntry): HistoryEntry[] {
   );
   saveHistory(next);
   return next;
+}
+
+export function updateHistoryEntry(
+  id: string,
+  patch: Partial<
+    Pick<HistoryEntry, "title" | "thumbnailUrl" | "itemCount" | "children" | "playlistFolder">
+  >
+): HistoryEntry[] {
+  const entries = loadHistory();
+  const idx = entries.findIndex((e) => e.id === id);
+  if (idx < 0) return entries;
+  entries[idx] = sanitizeEntry({ ...entries[idx], ...patch });
+  return saveHistory(entries);
 }
 
 export function clearHistory(): HistoryEntry[] {

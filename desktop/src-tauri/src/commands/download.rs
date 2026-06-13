@@ -12,18 +12,26 @@ pub async fn start_download(
 ) -> Result<String, String> {
     config.url = normalize_youtube_url(&config.url);
 
-    let paths = {
+    let (downloads, progress_tx, complete_tx) = {
         let guard = state.lock().await;
         ensure_cookie_store(&guard.paths).map_err(|e| e.to_string())?;
-        guard.paths.clone()
+        (
+            guard.downloads.clone(),
+            guard.progress_tx.clone(),
+            guard.complete_tx.clone(),
+        )
     };
 
     if !config.is_mp3 && !config.skip_quality_check {
         if let Some(h) = config.requested_height {
+            let paths = {
+                let guard = state.lock().await;
+                guard.paths.clone()
+            };
             let url = config.url.clone();
-            let paths_clone = paths.clone();
+            let paths_for_heights = paths.clone();
             let listed = tokio::task::spawn_blocking(move || {
-                fetch_available_video_heights(&paths_clone, &url).unwrap_or_default()
+                fetch_available_video_heights(&paths_for_heights, &url).unwrap_or_default()
             })
             .await
             .map_err(|e| e.to_string())?;
@@ -35,23 +43,19 @@ pub async fn start_download(
         }
     }
 
-    let guard = state.lock().await;
-    guard
-        .downloads
-        .start_download(
-            config,
-            guard.progress_tx.clone(),
-            guard.complete_tx.clone(),
-        )
+    downloads
+        .start_download(config, progress_tx, complete_tx)
         .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn cancel_download(state: State<'_, SharedState>, job_id: String) -> Result<(), String> {
-    let guard = state.lock().await;
-    guard
-        .downloads
+    let downloads = {
+        let guard = state.lock().await;
+        guard.downloads.clone()
+    };
+    downloads
         .cancel_download(&job_id)
         .await
         .map_err(|e| e.to_string())
@@ -59,9 +63,11 @@ pub async fn cancel_download(state: State<'_, SharedState>, job_id: String) -> R
 
 #[tauri::command]
 pub async fn pause_download(state: State<'_, SharedState>, job_id: String) -> Result<(), String> {
-    let guard = state.lock().await;
-    guard
-        .downloads
+    let downloads = {
+        let guard = state.lock().await;
+        guard.downloads.clone()
+    };
+    downloads
         .pause_download(&job_id)
         .await
         .map_err(|e| e.to_string())
@@ -69,9 +75,11 @@ pub async fn pause_download(state: State<'_, SharedState>, job_id: String) -> Re
 
 #[tauri::command]
 pub async fn resume_download(state: State<'_, SharedState>, job_id: String) -> Result<(), String> {
-    let guard = state.lock().await;
-    guard
-        .downloads
+    let downloads = {
+        let guard = state.lock().await;
+        guard.downloads.clone()
+    };
+    downloads
         .resume_download(&job_id)
         .await
         .map_err(|e| e.to_string())

@@ -105,7 +105,7 @@ pub async fn probe_video_cmd(
     .map_err(|e| e.to_string())??;
 
     let qualities = display_heights(&heights);
-    let quality = if is_mp3 {
+    let quality = if is_mp3 || playlist {
         None
     } else {
         Some(

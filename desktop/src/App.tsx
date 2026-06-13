@@ -9,6 +9,7 @@ import {
   openMediaFile,
   openFileLocation,
   openOutputFolder,
+  openPlaylistInSystemPlayer,
   pauseDownload,
   probeVideo,
   resolveQuality,
@@ -23,7 +24,7 @@ import DownloadForm from "./components/DownloadForm";
 import DownloadHistory from "./components/DownloadHistory";
 import PlayCompleted from "./components/PlayCompleted";
 import ProgressPanel from "./components/ProgressPanel";
-import { clearHistory, loadHistory, prependHistory, removeHistoryEntries, saveHistory } from "./history";
+import { clearHistory, loadHistory, prependHistory, removeHistoryEntries, saveHistory, updateHistoryEntry } from "./history";
 import { loadSettings, saveSettings } from "./settings";
 import type {
   DependencyStatus,
@@ -44,10 +45,15 @@ import {
 } from "./incompletePlaylists";
 import {
   buildPlaylistTracksFromTitles,
+  isPlaceholderPlaylistTitle,
   mergePlaylistProgress,
   playlistDisplayTitle,
   playlistFolderPath,
+  playlistFolderForEntry,
+  playlistIdFromEntry,
+  playlistTitleFromOutputPath,
   resolveTrackTitle,
+  titleFromPlaylistFolderPath,
 } from "./playlistProgress";
 
 const STANDARD = [2160, 1440, 1080, 720, 480, 360];
@@ -74,6 +80,27 @@ function normalizeYoutubeUrl(url: string): string {
   if (videoId) return `https://www.youtube.com/watch?v=${videoId}`;
   if (playlistId) return `https://www.youtube.com/playlist?list=${playlistId}`;
   return trimmed;
+}
+
+function hasDownloadMetadata(meta: MetadataInfo | null, isPlaylist: boolean): boolean {
+  if (!meta) return false;
+  if (isPlaylist) {
+    return Boolean(
+      (meta.playlist_title && !isPlaceholderPlaylistTitle(meta.playlist_title)) ||
+        (meta.title && !isPlaceholderPlaylistTitle(meta.title)) ||
+        meta.entry_count
+    );
+  }
+  return Boolean(meta.title || meta.video_id);
+}
+
+function placeholderPlaylistTracks(total: number): PlaylistTrackItem[] {
+  return Array.from({ length: total }, (_, i) => ({
+    itemIndex: i + 1,
+    title: `Video ${i + 1}`,
+    percent: 0,
+    status: "pending" as const,
+  }));
 }
 
 function instantMetadataFromUrl(url: string, isPlaylist: boolean): MetadataInfo | null {
@@ -314,6 +341,29 @@ export default function App() {
       if (e.payload.outputFile) {
         lastOutputFileRef.current = e.payload.outputFile;
       }
+      if (active?.isPlaylist && e.payload.outputFile) {
+        const realTitle = playlistTitleFromOutputPath(e.payload.outputFile);
+        if (realTitle) {
+          setActiveDownload((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  playlistTitle: realTitle,
+                  title: realTitle,
+                }
+              : prev
+          );
+          setMetadata((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  playlist_title: realTitle,
+                  title: realTitle,
+                }
+              : prev
+          );
+        }
+      }
       if (active?.isPlaylist && e.payload.itemIndex != null) {
         const idx = e.payload.itemIndex;
         const total = e.payload.totalItems ?? active.entryCount ?? undefined;
@@ -368,9 +418,56 @@ export default function App() {
         }
 
         setHistory(prependHistory(entry));
+        const savedLastOutput = lastOutputFileRef.current;
         setActiveDownload(null);
         playlistItemsRef.current = new Map();
         lastOutputFileRef.current = undefined;
+
+        if (
+          current.isPlaylist &&
+          isPlaceholderPlaylistTitle(entry.title) &&
+          current.url
+        ) {
+          const jobId = entry.id;
+          const folderHint =
+            entry.children?.find((c) => c.filePath)?.filePath ??
+            outputFile ??
+            progressRef.current?.outputFile ??
+            savedLastOutput;
+          const fromFolder = titleFromPlaylistFolderPath(folderHint);
+          if (fromFolder) {
+            setHistory(
+              updateHistoryEntry(jobId, {
+                title: playlistDisplayTitle(
+                  fromFolder,
+                  fromFolder,
+                  current.playlistId,
+                  folderHint
+                ),
+                playlistFolder: playlistFolderPath(outDir, folderHint) ?? undefined,
+              })
+            );
+          } else {
+            void fetchMetadata(current.url, true)
+              .then((meta) => {
+                const better = playlistDisplayTitle(
+                  meta.playlist_title,
+                  meta.title,
+                  current.playlistId ?? meta.playlist_id
+                );
+                if (!isPlaceholderPlaylistTitle(better)) {
+                  setHistory(
+                    updateHistoryEntry(jobId, {
+                      title: better,
+                      thumbnailUrl: meta.thumbnail_url ?? entry.thumbnailUrl,
+                      itemCount: meta.entry_count ?? entry.itemCount,
+                    })
+                  );
+                }
+              })
+              .catch(() => undefined);
+          }
+        }
       }
       if (!success && !message.toLowerCase().includes("cancelled")) {
         setPlaylistTracks([]);
@@ -494,11 +591,16 @@ export default function App() {
     try {
       let meta = metadata;
       const downloadUrl = normalizeYoutubeUrl(useUrl);
-      if (!meta?.title && downloadUrl) {
-        setPreparingMessage("Fetching video info…");
-        meta = await fetchMetadata(downloadUrl, usePlaylist);
-        setMetadata(meta);
+
+      // Refresh metadata in the background for UI only — never block yt-dlp startup.
+      if (!hasDownloadMetadata(meta, usePlaylist) && downloadUrl) {
+        void fetchMetadata(downloadUrl, usePlaylist)
+          .then((fresh) => {
+            setMetadata(fresh);
+          })
+          .catch(() => undefined);
       }
+
       setPreparingMessage("Starting yt-dlp…");
 
       let resolvedQuality = qualityResolution;
@@ -523,35 +625,22 @@ export default function App() {
       );
 
       if (usePlaylist && downloadUrl) {
-        setPreparingMessage("Loading playlist titles…");
-        const total = meta?.entry_count;
-        if (total) setPlaylistTotal(total);
-        try {
-          const titles = await listPlaylistTitles(downloadUrl);
-          if (titles.length) {
-            setPlaylistTracks(buildPlaylistTracksFromTitles(titles, total ?? titles.length));
-          } else if (total) {
-            setPlaylistTracks(
-              Array.from({ length: total }, (_, i) => ({
-                itemIndex: i + 1,
-                title: `Video ${i + 1}`,
-                percent: 0,
-                status: "pending" as const,
-              }))
-            );
-          }
-        } catch {
-          if (total) {
-            setPlaylistTracks(
-              Array.from({ length: total }, (_, i) => ({
-                itemIndex: i + 1,
-                title: `Video ${i + 1}`,
-                percent: 0,
-                status: "pending" as const,
-              }))
-            );
-          }
+        const total = meta?.entry_count ?? undefined;
+        if (total) {
+          setPlaylistTotal(total);
+          setPlaylistTracks(placeholderPlaylistTracks(total));
         }
+
+        // Load real titles in the background — do not block yt-dlp startup.
+        void listPlaylistTitles(downloadUrl)
+          .then((titles) => {
+            if (!titles.length) return;
+            setPlaylistTracks(
+              buildPlaylistTracksFromTitles(titles, total ?? titles.length)
+            );
+            if (!total) setPlaylistTotal(titles.length);
+          })
+          .catch(() => undefined);
       }
 
       const playlistName = playlistDisplayTitle(
@@ -863,6 +952,20 @@ export default function App() {
             onOpenFolder={openOutputFolder}
             onOpenFile={openMediaFile}
             onOpenLocation={openFileLocation}
+            onOpenPlaylist={async (entry) => {
+              const hints =
+                entry.children?.map((c) => ({
+                  title: c.title,
+                  itemIndex: c.itemIndex,
+                  filePath: c.filePath,
+                })) ?? [];
+              await openPlaylistInSystemPlayer({
+                outputDir: entry.outputDir,
+                hints,
+                folderPath: playlistFolderForEntry(entry) ?? undefined,
+                playlistId: playlistIdFromEntry(entry) ?? undefined,
+              });
+            }}
           />
         )}
 

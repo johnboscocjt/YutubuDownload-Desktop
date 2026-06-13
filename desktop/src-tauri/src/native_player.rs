@@ -632,7 +632,7 @@ pub fn native_player_alive() -> bool {
 }
 
 #[tauri::command]
-pub fn native_player_load(path: String) -> Result<(), String> {
+pub async fn native_player_load(path: String) -> Result<(), String> {
     #[cfg(not(target_os = "linux"))]
     {
         let _ = path;
@@ -641,8 +641,12 @@ pub fn native_player_load(path: String) -> Result<(), String> {
 
     #[cfg(target_os = "linux")]
     {
-        let _guard = PLAYER_OP_LOCK.lock().map_err(|e| e.to_string())?;
-        load_mpv_file(&path)
+        tokio::task::spawn_blocking(move || {
+            let _guard = PLAYER_OP_LOCK.lock().map_err(|e| e.to_string())?;
+            load_mpv_file(&path)
+        })
+        .await
+        .map_err(|e| format!("Player load failed: {e}"))?
     }
 }
 
@@ -813,29 +817,38 @@ pub async fn update_native_player_bounds(
             return Ok(());
         }
 
-        {
-            let mut guard = LAST_PLAYER_BOUNDS.lock().map_err(|e| e.to_string())?;
-            let was_hidden = guard.as_ref().is_none_or(|prev| !prev.visible);
-            if guard
-                .as_ref()
-                .is_some_and(|prev| bounds_unchanged(prev, &bounds))
-            {
-                return Ok(());
-            }
-            *guard = Some(bounds.clone());
+        let win = window.clone();
+        let bounds_clone = bounds.clone();
+        tokio::task::spawn_blocking(move || -> Result<(), String> {
+            let was_hidden = {
+                let mut guard = LAST_PLAYER_BOUNDS.lock().map_err(|e| e.to_string())?;
+                if guard
+                    .as_ref()
+                    .is_some_and(|prev| bounds_unchanged(prev, &bounds_clone))
+                {
+                    return Ok(());
+                }
+                let hidden = guard.as_ref().is_none_or(|prev| !prev.visible);
+                *guard = Some(bounds_clone.clone());
+                hidden
+            };
 
-            let win = window.clone();
-            let bounds_clone = bounds.clone();
-            let reveal = bounds.visible && was_hidden;
-            run_on_main(&win.clone(), move || reposition_child_embed(&win, &bounds_clone))?;
-            if bounds.visible {
+            let reveal = bounds_clone.visible && was_hidden;
+            let bounds_for_gtk = bounds_clone.clone();
+            run_on_main(&win.clone(), move || {
+                reposition_child_embed(&win, &bounds_for_gtk)
+            })?;
+            if bounds_clone.visible {
                 let _ = send_mpv_ipc("fitWindow");
                 if reveal {
                     refresh_mpv_surface();
                 }
             }
-            return Ok(());
-        }
+            Ok(())
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        Ok(())
     }
 }
 

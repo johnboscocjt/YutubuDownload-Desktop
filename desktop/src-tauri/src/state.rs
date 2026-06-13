@@ -5,7 +5,7 @@ use ytd_core::YtdPaths;
 
 pub struct AppState {
     pub paths: YtdPaths,
-    pub downloads: DownloadManager,
+    pub downloads: Arc<DownloadManager>,
     pub progress_tx: ProgressSender,
     pub complete_tx: CompleteSender,
 }

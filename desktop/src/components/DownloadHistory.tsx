@@ -16,6 +16,7 @@ interface Props {
   onOpenFolder: (path: string) => void;
   onOpenFile: (path: string) => void;
   onOpenLocation: (path: string) => void;
+  onOpenPlaylist: (entry: HistoryEntry) => Promise<void>;
 }
 
 function canResumeFromHistory(entry: HistoryEntry): boolean {
@@ -45,6 +46,13 @@ function isPlaylistEntry(entry: HistoryEntry): boolean {
   return Boolean(entry.isPlaylist || (entry.children && entry.children.length > 0));
 }
 
+function canOpenPlaylistExternally(entry: HistoryEntry): boolean {
+  return (
+    isPlaylistEntry(entry) &&
+    (entry.status === "complete" || entry.status === "incomplete")
+  );
+}
+
 function HistoryRow({
   entry,
   selected,
@@ -55,6 +63,7 @@ function HistoryRow({
   onOpenFolder,
   onOpenFile,
   onOpenLocation,
+  onOpenPlaylist,
 }: {
   entry: HistoryEntry;
   selected: boolean;
@@ -65,10 +74,13 @@ function HistoryRow({
   onOpenFolder: (path: string) => void;
   onOpenFile: (path: string) => void;
   onOpenLocation: (path: string) => void;
+  onOpenPlaylist: (entry: HistoryEntry) => Promise<void>;
 }) {
   const playlist = isPlaylistEntry(entry);
   const hasChildren = (entry.children?.length ?? 0) > 0;
   const [expanded, setExpanded] = useState(false);
+  const [openingPlaylist, setOpeningPlaylist] = useState(false);
+  const [playlistOpenError, setPlaylistOpenError] = useState("");
   const itemLabel = entry.itemCount ?? entry.children?.length ?? 0;
   const displayTitle = entryDisplayTitle(entry);
   const metaLabel = entryMetaLabel(entry);
@@ -219,16 +231,38 @@ function HistoryRow({
               </button>
             </>
           ) : (
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={() => onOpenFolder(entry.outputDir)}
-              title={entry.outputDir}
-            >
-              Destination
-            </button>
+            <>
+              {canOpenPlaylistExternally(entry) && (
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  disabled={openingPlaylist}
+                  title="Open all tracks in VLC, mpv, or your default media player"
+                  onClick={() => {
+                    setPlaylistOpenError("");
+                    setOpeningPlaylist(true);
+                    void onOpenPlaylist(entry)
+                      .catch((e) => setPlaylistOpenError(String(e)))
+                      .finally(() => setOpeningPlaylist(false));
+                  }}
+                >
+                  {openingPlaylist ? "Opening…" : "Open playlist"}
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => onOpenFolder(entry.outputDir)}
+                title={entry.outputDir}
+              >
+                Destination
+              </button>
+            </>
           )}
         </div>
+        {playlistOpenError ? (
+          <p className="hint history-playlist-open-error">{playlistOpenError}</p>
+        ) : null}
       </div>
 
       {playlist && hasChildren && expanded && (
@@ -266,6 +300,7 @@ export default function DownloadHistory({
   onOpenFolder,
   onOpenFile,
   onOpenLocation,
+  onOpenPlaylist,
 }: Props) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [searchQuery, setSearchQuery] = useState("");
@@ -437,6 +472,7 @@ export default function DownloadHistory({
                     onOpenFolder={onOpenFolder}
                     onOpenFile={onOpenFile}
                     onOpenLocation={onOpenLocation}
+                    onOpenPlaylist={onOpenPlaylist}
                   />
                 ))}
               </ul>

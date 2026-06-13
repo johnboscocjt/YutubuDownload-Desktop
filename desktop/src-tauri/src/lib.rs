@@ -6,6 +6,7 @@ mod native_player;
 mod state;
 
 use state::{AppState, SharedState};
+use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc;
 use ytd_core::download::DownloadManager;
@@ -18,7 +19,7 @@ pub fn run() {
 
     let paths = YtdPaths::desktop();
     let _ = paths.ensure_dirs();
-    let downloads = DownloadManager::new(paths.clone());
+    let downloads = Arc::new(DownloadManager::new(paths.clone()));
 
     let (progress_tx, mut progress_rx) = mpsc::unbounded_channel();
     let (complete_tx, mut complete_rx) = mpsc::unbounded_channel();
@@ -75,6 +76,7 @@ pub fn run() {
             commands::stage_media_for_playback,
             commands::probe_playback_prep,
             commands::open_media_file,
+            commands::open_playlist_in_system_player,
             native_player::has_native_player_cmd,
             native_player::start_native_player,
             native_player::native_player_load,

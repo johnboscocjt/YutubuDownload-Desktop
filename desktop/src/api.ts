@@ -108,9 +108,16 @@ import type { PlayableFile } from "./types";
 
 export function resolvePlayableFiles(
   outputDir: string,
-  hints: PlayableHint[]
+  hints: PlayableHint[],
+  searchFolder?: string,
+  playlistId?: string
 ): Promise<PlayableFile[]> {
-  return invoke("resolve_playable_files", { outputDir, hints });
+  return invoke("resolve_playable_files", {
+    outputDir,
+    hints,
+    searchFolder,
+    playlistId,
+  });
 }
 
 export interface PartialPlaylistScan {
@@ -145,6 +152,20 @@ export function stageMediaForPlayback(sourcePath: string): Promise<string> {
 
 export function openMediaFile(path: string): Promise<void> {
   return invoke("open_media_file", { path });
+}
+
+export function openPlaylistInSystemPlayer(params: {
+  outputDir: string;
+  hints: PlayableHint[];
+  folderPath?: string;
+  playlistId?: string;
+}): Promise<void> {
+  return invoke("open_playlist_in_system_player", {
+    outputDir: params.outputDir,
+    hints: params.hints,
+    folderPath: params.folderPath,
+    playlistId: params.playlistId,
+  });
 }
 
 export interface NativePlayerBounds {

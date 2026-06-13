@@ -28,13 +28,38 @@ export function resolveTrackTitle(
   return trimmed && isYoutubeVideoId(trimmed) ? "Loading title…" : trimmed || "Unknown";
 }
 
+export function isPlaceholderPlaylistTitle(title?: string): boolean {
+  if (!title?.trim()) return true;
+  return /^Playlist \[[A-Za-z0-9_-]+\]$/i.test(title.trim());
+}
+
+/** Human title from `My Playlist [PLabc]/01 - …` folder segment. */
+export function titleFromPlaylistFolderPath(filePath?: string): string | undefined {
+  if (!filePath) return undefined;
+  const parts = filePath.replace(/\\/g, "/").split("/");
+  if (parts.length < 2) return undefined;
+  const folder = parts[parts.length - 2]?.trim();
+  if (!folder) return undefined;
+  const match = folder.match(/^(.+) \[([A-Za-z0-9_-]+)\]$/);
+  if (!match) return undefined;
+  const name = match[1].trim();
+  if (!name || isPlaceholderPlaylistTitle(name)) return undefined;
+  return name;
+}
+
 export function playlistDisplayTitle(
   playlistTitle?: string,
   fallbackTitle?: string,
-  playlistId?: string
+  playlistId?: string,
+  folderPathHint?: string
 ): string {
+  const fromFolder = titleFromPlaylistFolderPath(folderPathHint);
+  if (fromFolder) return fromFolder;
+
   const name = playlistTitle?.trim() || fallbackTitle?.trim();
-  if (name && !isYoutubeVideoId(name)) return name;
+  if (name && !isYoutubeVideoId(name) && !isPlaceholderPlaylistTitle(name)) {
+    return name;
+  }
   if (playlistId) return `Playlist [${playlistId}]`;
   return name || "Playlist";
 }
@@ -93,6 +118,52 @@ export function playlistFolderPath(
   const slash = rest.indexOf("/");
   if (slash <= 0) return null;
   return `${base}/${rest.slice(0, slash)}`;
+}
+
+export function playlistFolderLabelFromOutputPath(
+  outputDir: string,
+  outputFile?: string
+): string | null {
+  const folder = playlistFolderPath(outputDir, outputFile);
+  if (!folder) return null;
+  const parts = folder.replace(/\\/g, "/").split("/");
+  return parts[parts.length - 1] || null;
+}
+
+export function playlistTitleFromOutputPath(outputFile?: string): string | undefined {
+  return titleFromPlaylistFolderPath(outputFile);
+}
+
+export function playlistIdFromEntry(entry: {
+  url: string;
+  title: string;
+}): string | null {
+  const fromUrl = entry.url.match(/[?&]list=(PL[A-Za-z0-9_-]+)/i);
+  if (fromUrl) return fromUrl[1];
+  const fromTitle = entry.title.match(/\[(PL[A-Za-z0-9_-]+)\]/i);
+  return fromTitle?.[1] ?? null;
+}
+
+export function playlistFolderForEntry(entry: {
+  outputDir: string;
+  title: string;
+  playlistFolder?: string;
+  url?: string;
+  children?: { filePath?: string }[];
+}): string | null {
+  if (entry.playlistFolder) {
+    return entry.playlistFolder;
+  }
+
+  const childPath = entry.children?.find((c) => c.filePath)?.filePath;
+  const fromChild = playlistFolderPath(entry.outputDir, childPath);
+  if (fromChild) return fromChild;
+
+  const titled = entry.title.trim();
+  if (titled.includes(" [PL") && !isPlaceholderPlaylistTitle(titled)) {
+    return `${entry.outputDir.replace(/\/$/, "")}/${titled}`;
+  }
+  return null;
 }
 
 export function mergePlaylistProgress(

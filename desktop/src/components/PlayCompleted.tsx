@@ -29,7 +29,8 @@ import {
   searchCompletedDownloads,
   type CompletedLibraryFilter,
 } from "../searchCompleted";
-import { entryDisplayTitle, entryMetaLabel, fileBasename } from "../history";
+import { entryDisplayTitle, entryMetaLabel, fileBasename, preferAudioPlayer } from "../history";
+import { playlistFolderForEntry, playlistIdFromEntry } from "../playlistProgress";
 import { loadSettings, saveSettings } from "../settings";
 import type { HistoryEntry, PlayableFile } from "../types";
 import PlayerProgressBar from "./PlayerProgressBar";
@@ -271,6 +272,7 @@ export default function PlayCompleted({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [preferEmbed, setPreferEmbed] = useState(true);
+  const [mpvAvailable, setMpvAvailable] = useState(false);
   const [playerMode, setPlayerMode] = useState<"embed" | "builtin">("embed");
   const [nativeActive, setNativeActive] = useState(false);
   const [playerPaused, setPlayerPaused] = useState(false);
@@ -315,6 +317,22 @@ export default function PlayCompleted({
   const trackSwitchingRef = useRef(false);
   const playerRestartRef = useRef(false);
   const deadPlayerPollsRef = useRef(0);
+  const mpvAvailableRef = useRef(false);
+  const preferEmbedRef = useRef(true);
+
+  const usesHtmlAudio = useCallback(
+    (item: { isAudio: boolean } | null | undefined) =>
+      Boolean(item?.isAudio && !(preferEmbed && mpvAvailable)),
+    [preferEmbed, mpvAvailable]
+  );
+
+  useEffect(() => {
+    preferEmbedRef.current = preferEmbed;
+  }, [preferEmbed]);
+
+  useEffect(() => {
+    mpvAvailableRef.current = mpvAvailable;
+  }, [mpvAvailable]);
 
   useEffect(() => {
     autoplayNextRef.current = autoplayNext;
@@ -334,6 +352,7 @@ export default function PlayCompleted({
   }, [queue]);
 
   const current = queue[currentIndex] ?? null;
+  const currentUsesHtmlAudio = usesHtmlAudio(current);
   const upNext = queue.slice(currentIndex + 1);
   const hasQueueNav = queue.length > 1;
   const showUpNextList = hasQueueNav && current?.isPlaylist && upNext.length > 0 && upNext.length <= 8;
@@ -346,11 +365,17 @@ export default function PlayCompleted({
   useEffect(() => {
     hasNativePlayer()
       .then((ok) => {
+        setMpvAvailable(ok);
+        mpvAvailableRef.current = ok;
         setPreferEmbed(ok);
+        preferEmbedRef.current = ok;
         if (!ok) setPlayerMode("builtin");
       })
       .catch(() => {
+        setMpvAvailable(false);
+        mpvAvailableRef.current = false;
         setPreferEmbed(false);
+        preferEmbedRef.current = false;
         setPlayerMode("builtin");
       });
     return () => {
@@ -390,7 +415,14 @@ export default function PlayCompleted({
             }))
           : [{ title: entry.title, filePath: entry.filePath }];
 
-      const files = await resolvePlayableFiles(entry.outputDir, hints);
+      const searchFolder =
+        entry.playlistFolder ?? playlistFolderForEntry(entry) ?? undefined;
+      const files = await resolvePlayableFiles(
+        entry.outputDir,
+        hints,
+        searchFolder,
+        playlistIdFromEntry(entry) ?? undefined
+      );
       if (!files.length) return [];
 
       const playlist = isPlaylistEntry(entry);
@@ -408,6 +440,7 @@ export default function PlayCompleted({
         entryTitle: entry.title,
         thumbnailUrl: entry.thumbnailUrl,
         isPlaylist: playlist && ordered.length > 1,
+        isAudio: preferAudioPlayer(f.path, entry.isMp3, f.isAudio),
       }));
     },
     []
@@ -475,7 +508,7 @@ export default function PlayCompleted({
   const isLibraryLoading = loadingId != null;
 
   const handleVideoError = useCallback(async () => {
-    if (!current || current.isAudio) return;
+    if (!current || usesHtmlAudio(current)) return;
 
     const streamSrc = convertFileSrc(current.path, "ytd-media");
     if (!blobSrc && videoRef.current) {
@@ -528,7 +561,7 @@ export default function PlayCompleted({
         }
         return;
       }
-      const el = current?.isAudio ? audioRef.current : videoRef.current;
+      const el = currentUsesHtmlAudio ? audioRef.current : videoRef.current;
       if (el) {
         el.currentTime = 0;
         await el.play();
@@ -538,7 +571,7 @@ export default function PlayCompleted({
         setError(String(e));
       }
     }
-  }, [current?.isAudio, resetPlaybackEnded]);
+  }, [currentUsesHtmlAudio, resetPlaybackEnded]);
 
   const handlePlaybackEndedRef = useRef<() => void>(() => {});
 
@@ -550,8 +583,15 @@ export default function PlayCompleted({
     setBlobSrc("");
     setCinemaMode(false);
     resetPlaybackEnded();
-    if (preferEmbed) setPlayerMode("embed");
-  }, [current?.path, preferEmbed, resetPlaybackEnded]);
+    if (currentUsesHtmlAudio) {
+      setPlayerMode("builtin");
+      return;
+    }
+    setError((prev) =>
+      prev === "Could not play audio. Try Open in system player." ? "" : prev
+    );
+    if (preferEmbed && mpvAvailable) setPlayerMode("embed");
+  }, [current?.path, currentUsesHtmlAudio, preferEmbed, mpvAvailable, resetPlaybackEnded]);
 
   const controlsWakeThrottleRef = useRef(0);
   const lastBoundsKeyRef = useRef("");
@@ -572,7 +612,7 @@ export default function PlayCompleted({
   }, []);
 
   const startNative = useCallback(async (): Promise<"ok" | "retry" | "fail"> => {
-    if (!current || current.isAudio || playerMode !== "embed") return "fail";
+    if (!current || usesHtmlAudio(current) || playerMode !== "embed") return "fail";
     const bounds = getPlayerBounds();
     if (!bounds || !bounds.visible) return "retry";
     try {
@@ -622,10 +662,10 @@ export default function PlayCompleted({
       }
       return "fail";
     }
-  }, [current, playerMode, getPlayerBounds]);
+  }, [current, usesHtmlAudio, playerMode, getPlayerBounds]);
 
   const restartNativePlayback = useCallback(async () => {
-    if (playerRestartRef.current || !current || current.isAudio || playerMode !== "embed") {
+    if (playerRestartRef.current || !current || usesHtmlAudio(current) || playerMode !== "embed") {
       return;
     }
     playerRestartRef.current = true;
@@ -649,10 +689,19 @@ export default function PlayCompleted({
       resetPlaybackEnded();
       setCurrentIndex(nextIndex);
 
-      if (item.isAudio || playerModeRef.current !== "embed") {
-        trackSwitchingRef.current = false;
+      const htmlAudio = item.isAudio && !(preferEmbedRef.current && mpvAvailableRef.current);
+
+      if (htmlAudio) {
+        await stopNativePlayer();
         embedSessionRef.current = false;
+        setNativeActive(false);
+        setPlayerMode("builtin");
+        trackSwitchingRef.current = false;
         return;
+      }
+
+      if (preferEmbedRef.current && mpvAvailableRef.current) {
+        setPlayerMode("embed");
       }
 
       if (embedSessionRef.current) {
@@ -675,7 +724,7 @@ export default function PlayCompleted({
         } catch {
           embedSessionRef.current = false;
           trackSwitchingRef.current = false;
-          void restartNativePlayback();
+          void startNative();
           return;
         }
       }
@@ -683,7 +732,7 @@ export default function PlayCompleted({
       trackSwitchingRef.current = false;
       void startNative();
     },
-    [getPlayerBounds, resetPlaybackEnded, startNative, restartNativePlayback]
+    [getPlayerBounds, resetPlaybackEnded, startNative]
   );
 
   const handlePlaybackEnded = useCallback(() => {
@@ -852,7 +901,7 @@ export default function PlayCompleted({
       return;
     }
 
-    if (current.isAudio || playerMode !== "embed") {
+    if (currentUsesHtmlAudio || playerMode !== "embed") {
       embedSessionRef.current = false;
       void stopNativePlayer();
       setNativeActive(false);
@@ -912,7 +961,7 @@ export default function PlayCompleted({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [current?.path, current?.isAudio, playerMode, startNative, getPlayerBounds, forceRevealEmbed, scrollPlayerIntoView]);
+  }, [current?.path, currentUsesHtmlAudio, playerMode, startNative, getPlayerBounds, forceRevealEmbed, scrollPlayerIntoView]);
 
   useEffect(() => {
     if (!nativeActive || playerMode !== "embed" || cinemaMode || !panelVisible) return;
@@ -1031,7 +1080,7 @@ export default function PlayCompleted({
         return;
       }
       const wrap = playerWrapRef.current;
-      if (!wrap || !current || current.isAudio) return;
+      if (!wrap || !current || currentUsesHtmlAudio) return;
       void startNative();
     };
 
@@ -1083,7 +1132,7 @@ export default function PlayCompleted({
   }, [scheduleControlsIdle, setControlsActive]);
 
   const handlePlayerDoubleClick = useCallback(() => {
-    if (!current || current.isAudio) return;
+    if (!current || usesHtmlAudio(current)) return;
     if (playerMode === "embed" && !nativeActive) return;
     wakeControls(true);
     toggleCinema();
@@ -1352,7 +1401,7 @@ export default function PlayCompleted({
   }, [cinemaMode, nativeActive, playerMode, syncNativeBounds, forceRevealEmbed]);
 
   useEffect(() => {
-    if (!nativeActive || playerMode !== "embed" || !current || current.isAudio) return;
+    if (!nativeActive || playerMode !== "embed" || !current || currentUsesHtmlAudio) return;
 
     let unlisten: (() => void) | undefined;
     void listen("player-double-click", () => {
@@ -1482,22 +1531,60 @@ export default function PlayCompleted({
     };
   }, []);
 
-  const useBuiltinVideo = current && !current.isAudio && playerMode === "builtin";
+  const useBuiltinVideo = current && !currentUsesHtmlAudio && playerMode === "builtin";
 
   const streamSrc =
-    current && (current.isAudio || useBuiltinVideo)
+    current && (currentUsesHtmlAudio || useBuiltinVideo)
       ? convertFileSrc(current.path, "ytd-media")
       : "";
 
   const mediaSrc = blobSrc || streamSrc;
 
+  const handleAudioError = useCallback(async () => {
+    if (!currentUsesHtmlAudio || !current) return;
+    const streamSrc = convertFileSrc(current.path, "ytd-media");
+    if (!blobSrc && audioRef.current) {
+      try {
+        const resp = await fetch(streamSrc);
+        if (resp.ok) {
+          const raw = await resp.blob();
+          const typed =
+            raw.type && raw.type.startsWith("audio")
+              ? raw
+              : new Blob([raw], { type: "audio/mpeg" });
+          const url = URL.createObjectURL(typed);
+          setBlobSrc(url);
+          setError("");
+          return;
+        }
+      } catch {
+        // fall through
+      }
+    }
+    setError("Could not play audio. Try Open in system player.");
+  }, [current, currentUsesHtmlAudio, blobSrc]);
+
   useEffect(() => {
-    if (!current || !mediaSrc || playerMode === "embed") return;
-    const el = current.isAudio ? audioRef.current : videoRef.current;
+    if (!current || !mediaSrc) return;
+
+    if (currentUsesHtmlAudio) {
+      const el = audioRef.current;
+      if (!el) return;
+      setError("");
+      resetPlaybackEnded();
+      el.load();
+      void el.play().catch(() => {
+        void handleAudioError();
+      });
+      return;
+    }
+
+    if (playerMode === "embed") return;
+    const el = videoRef.current;
     if (!el) return;
     setError("");
     el.load();
-  }, [mediaSrc, current?.isAudio, currentIndex, playerMode]);
+  }, [mediaSrc, currentUsesHtmlAudio, currentIndex, playerMode, resetPlaybackEnded, handleAudioError]);
 
   const filteredCompleted = useMemo(
     () => searchCompletedDownloads(completed, searchQuery, libraryFilter),
@@ -1554,7 +1641,7 @@ export default function PlayCompleted({
                   : undefined
               }
             >
-              {playerMode === "embed" && !current.isAudio ? (
+              {playerMode === "embed" && !currentUsesHtmlAudio ? (
                 <div className="player-native-hole">
                   {!nativeActive && (
                     <p className="hint player-native-loading">Starting player…</p>
@@ -1572,7 +1659,7 @@ export default function PlayCompleted({
                     </div>
                   )}
                 </div>
-              ) : current.isAudio ? (
+              ) : currentUsesHtmlAudio ? (
                 <audio
                   ref={audioRef}
                   src={mediaSrc}
@@ -1580,9 +1667,7 @@ export default function PlayCompleted({
                   autoPlay
                   className="player-audio"
                   onEnded={handleEnded}
-                  onError={() =>
-                    setError("Could not play audio. Try Open in system player.")
-                  }
+                  onError={() => void handleAudioError()}
                 />
               ) : (
                 <video
@@ -1597,7 +1682,7 @@ export default function PlayCompleted({
                 />
               )}
             </div>
-            {playerMode === "embed" && !current.isAudio && nativeActive && (
+            {playerMode === "embed" && !currentUsesHtmlAudio && nativeActive && (
               <div
                 ref={playerToolbarRef}
                 className={`player-toolbar${

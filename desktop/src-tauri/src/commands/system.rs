@@ -12,8 +12,14 @@ pub async fn check_dependencies_cmd(state: State<'_, SharedState>) -> Result<Dep
 
 #[tauri::command]
 pub async fn refresh_cookies(state: State<'_, SharedState>, force: bool) -> Result<String, String> {
-    let guard = state.lock().await;
-    refresh_cookie_store(&guard.paths, force).map_err(|e| e.to_string())
+    let paths = {
+        let guard = state.lock().await;
+        guard.paths.clone()
+    };
+    tokio::task::spawn_blocking(move || refresh_cookie_store(&paths, force))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
