@@ -41,6 +41,8 @@ export interface PlatformInfo {
   icon: string;
   description: string;
   formats: string[];
+  /** Primary download button text, e.g. "Download .exe" */
+  downloadLabel: string;
   assetHints: string[];
   fallbackUrl: string;
   installCommand?: string;
@@ -54,6 +56,7 @@ export const PLATFORMS: PlatformInfo[] = [
     icon: "🐧",
     description: ".deb package for Ubuntu, Debian, and most distros.",
     formats: [".deb"],
+    downloadLabel: "Download .deb",
     assetHints: [".deb", "amd64.deb", "linux"],
     fallbackUrl: `https://github.com/${APP.repo}/releases/latest`,
   },
@@ -63,6 +66,7 @@ export const PLATFORMS: PlatformInfo[] = [
     icon: "🪟",
     description: "Desktop installer for Windows 10/11 (64-bit).",
     formats: [".exe"],
+    downloadLabel: "Download .exe",
     assetHints: ["windows", "win", ".exe", ".msi", "nsis", "setup"],
     fallbackUrl: `https://github.com/${APP.repo}/releases/latest`,
   },
@@ -72,6 +76,7 @@ export const PLATFORMS: PlatformInfo[] = [
     icon: "🍎",
     description: "Universal .dmg for Apple Silicon and Intel Macs.",
     formats: [".dmg"],
+    downloadLabel: "Download .dmg",
     assetHints: ["macos", "darwin", ".dmg", "apple", "universal"],
     fallbackUrl: `https://github.com/${APP.repo}/releases/latest`,
   },
@@ -81,6 +86,7 @@ export const PLATFORMS: PlatformInfo[] = [
     icon: "⌨️",
     description: "Classic `ytd` command for Ubuntu terminal — one-line install.",
     formats: ["install.sh"],
+    downloadLabel: "Run install script",
     assetHints: [],
     fallbackUrl: `https://raw.githubusercontent.com/${APP.terminalRepo}/main/install.sh`,
     installCommand: `sudo bash -c "$(curl -sL https://raw.githubusercontent.com/${APP.terminalRepo}/main/install.sh)"`,

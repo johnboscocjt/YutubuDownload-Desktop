@@ -15,13 +15,6 @@ interface ReleasePayload {
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
-function downloadButtonLabel(platform: Platform): string {
-  if (platform === "linux") return "Download .deb";
-  if (platform === "windows") return "Download .exe";
-  if (platform === "macos") return "Download .dmg";
-  return "Download";
-}
-
 function downloadFilename(platform: Platform): string | undefined {
   if (platform === "linux") return APP.linuxDeb.filename;
   if (platform === "windows") return APP.windowsInstaller.filename;
@@ -131,7 +124,7 @@ export default function DownloadSection() {
                     href={`/api/download?platform=${p.id}`}
                     download={downloadFilename(p.id)}
                   >
-                    {downloadButtonLabel(p.id)}
+                    {p.downloadLabel}
                     <IconArrowRight />
                   </a>
                   {INSTALL_GUIDE_HREFS[p.id] && (
