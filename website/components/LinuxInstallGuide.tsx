@@ -67,7 +67,11 @@ const TROUBLESHOOT = [
   },
   {
     q: "ytd command missing after installing the .deb?",
-    a: "Reinstall the CLI: sudo bash -c \"$(curl -sL https://raw.githubusercontent.com/johnboscocjt/Youtube-Downloader-For-UbuntuTerminal/main/install.sh)\" — safe to repeat; it will not remove the desktop app.",
+    a: `Reinstall the CLI: sudo bash -c "$(curl -sL https://raw.githubusercontent.com/johnboscocjt/Youtube-Downloader-For-UbuntuTerminal/main/install.sh)" — safe to repeat; it will not remove the desktop app. Full ytd docs: ${APP.cliSiteUrl}`,
+  },
+  {
+    q: "Want deeper CLI docs, screenshots, and troubleshooting?",
+    a: `See the dedicated CLI site at ${APP.cliSiteUrl} — download guide, technical manual, and platform notes for Linux, WSL, and macOS Terminal.`,
   },
 ];
 

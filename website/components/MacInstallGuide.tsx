@@ -77,7 +77,15 @@ const TROUBLESHOOT = [
   },
   {
     q: "Need the classic terminal workflow?",
-    a: "The Linux terminal installer (ytd command) is not for macOS. Use this desktop app, or run yt-dlp directly in Terminal.",
+    a: (
+      <>
+        macOS is Unix-based — run the <code>ytd</code> install script in Terminal. See the{" "}
+        <a href={APP.cliSiteUrl} target="_blank" rel="noreferrer">
+          CLI docs site
+        </a>
+        . Or use this desktop app, or run yt-dlp directly in Terminal.
+      </>
+    ),
   },
 ];
 

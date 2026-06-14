@@ -35,6 +35,9 @@ export default function HomePage() {
               <a href="#linux-install">Linux (.deb)</a>
               <a href="#windows-install">Windows (.exe)</a>
               <a href="#macos-install">macOS (.dmg)</a>
+              <a href={APP.cliSiteUrl} target="_blank" rel="noreferrer">
+                ytd CLI docs
+              </a>
             </nav>
           </div>
           <LinuxInstallGuide />
@@ -64,6 +67,9 @@ export default function HomePage() {
             <a href="#linux-install">Linux install</a>
             <a href="#windows-install">Windows install</a>
             <a href="#macos-install">macOS install</a>
+            <a href={APP.cliSiteUrl} target="_blank" rel="noreferrer">
+              ytd CLI site
+            </a>
             <a href={`https://github.com/${APP.terminalRepo}/blob/main/TROUBLESHOOTING.md`}>
               Troubleshooting
             </a>

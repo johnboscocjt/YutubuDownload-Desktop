@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import useSWR from "swr";
-import { PLATFORMS, APP, type Platform } from "@/lib/config";
+import { PLATFORMS, APP, CLI_PLATFORM_NOTES, type Platform } from "@/lib/config";
 import type { ResolvedDownload } from "@/lib/github";
 import { PLATFORM_ICONS, IconArrowRight } from "./svg/Icons";
 import Reveal from "./Reveal";
@@ -162,10 +162,28 @@ export default function DownloadSection() {
                 </div>
               </div>
               <code>{terminal.installCommand}</code>
+              <div className="cli-platform-notes">
+                <h4>CLI platform notes</h4>
+                <ul>
+                  {CLI_PLATFORM_NOTES.map((item) => (
+                    <li key={item.platform}>
+                      <strong>{item.platform}:</strong> {item.note}
+                    </li>
+                  ))}
+                </ul>
+              </div>
               <div className="install-actions">
                 <a className="btn btn-primary" href="/api/download?platform=terminal">
                   Run install script
                   <IconArrowRight />
+                </a>
+                <a
+                  className="btn btn-ghost"
+                  href={APP.cliSiteUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  CLI docs site
                 </a>
                 <a
                   className="btn btn-ghost"

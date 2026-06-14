@@ -7,6 +7,8 @@ export const APP = {
   repo: "johnboscocjt/YutubuDownload-Desktop",
   /** Terminal install.sh lives here */
   terminalRepo: "johnboscocjt/Youtube-Downloader-For-UbuntuTerminal",
+  /** Public CLI docs & investor/customer site */
+  cliSiteUrl: "https://ytdownloadertz.vercel.app/",
   author: "Johnbosco",
   license: "MIT",
   /** Site-hosted Linux installer (used when GitHub Release has no .deb yet) */
@@ -82,9 +84,9 @@ export const PLATFORMS: PlatformInfo[] = [
   },
   {
     id: "terminal",
-    label: "Terminal (Linux)",
+    label: "Terminal (ytd CLI)",
     icon: "⌨️",
-    description: "Classic `ytd` command for Ubuntu terminal — one-line install.",
+    description: "Classic `ytd` command — full docs and guides on the CLI site. Linux native; Windows via WSL; macOS in Terminal.",
     formats: ["install.sh"],
     downloadLabel: "Run install script",
     assetHints: [],
@@ -92,6 +94,26 @@ export const PLATFORMS: PlatformInfo[] = [
     installCommand: `sudo bash -c "$(curl -sL https://raw.githubusercontent.com/${APP.terminalRepo}/main/install.sh)"`,
   },
 ];
+
+/** Where the `ytd` CLI works — mirrors https://ytdownloadertz.vercel.app/ */
+export const CLI_PLATFORM_NOTES = [
+  {
+    platform: "Linux",
+    note: "Fully supported — use the one-line install below.",
+  },
+  {
+    platform: "Windows",
+    note: "Use WSL or a Linux VM, then run the install script inside that Linux environment.",
+  },
+  {
+    platform: "macOS",
+    note: "Supported — Unix-based; run the install script in Terminal.",
+  },
+  {
+    platform: "Other Unix",
+    note: "Distro-agnostic design across Unix-like systems.",
+  },
+] as const;
 
 export const FEATURES = [
   {

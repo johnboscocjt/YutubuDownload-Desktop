@@ -72,7 +72,16 @@ const TROUBLESHOOT = [
   },
   {
     q: "Need the classic terminal workflow?",
-    a: "The Linux terminal installer (ytd command) is not for Windows. Use this desktop app, or run yt-dlp directly in PowerShell.",
+    a: (
+      <>
+        On Windows, use WSL or a Linux VM and install{" "}
+        <code>ytd</code> there — see the{" "}
+        <a href={APP.cliSiteUrl} target="_blank" rel="noreferrer">
+          CLI docs site
+        </a>
+        . Or use this desktop app, or run yt-dlp directly in PowerShell.
+      </>
+    ),
   },
 ];
 
