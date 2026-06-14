@@ -7,8 +7,6 @@ const STATS_BLOB_PATH = "stats/download-stats.json";
 
 export interface LocalStats {
   total: number;
-  /** Redirects to GitHub release assets via /api/download */
-  githubTracked: number;
   byPlatform: Record<Platform, number>;
   updatedAt: string;
 }
@@ -16,7 +14,6 @@ export interface LocalStats {
 export function emptyStats(): LocalStats {
   return {
     total: 0,
-    githubTracked: 0,
     byPlatform: { linux: 0, windows: 0, macos: 0, terminal: 0 },
     updatedAt: new Date().toISOString(),
   };
@@ -29,7 +26,6 @@ function normalizeStats(parsed: Partial<LocalStats> | null | undefined): LocalSt
   }
   return {
     total: Number(parsed?.total) || 0,
-    githubTracked: Number(parsed?.githubTracked) || 0,
     byPlatform,
     updatedAt: parsed?.updatedAt ?? new Date().toISOString(),
   };
@@ -97,31 +93,6 @@ export async function incrementLocalStats(platform: Platform): Promise<LocalStat
   const current = await readLocalStats();
   current.total += 1;
   current.byPlatform[platform] += 1;
-  current.updatedAt = new Date().toISOString();
-
-  if (blobReady()) {
-    await writeBlobStats(current);
-    return current;
-  }
-
-  if (isVercelRuntime()) {
-    throw new Error(
-      "Download stats storage is not configured on Vercel (set BLOB_STORE_ID or Redis env vars)."
-    );
-  }
-
-  const dir = path.dirname(storePath());
-  await mkdir(dir, { recursive: true });
-  const tmp = `${storePath()}.tmp`;
-  await writeFile(tmp, JSON.stringify(current, null, 2), "utf8");
-  await rename(tmp, storePath());
-
-  return current;
-}
-
-export async function incrementGithubTracked(): Promise<LocalStats> {
-  const current = await readLocalStats();
-  current.githubTracked += 1;
   current.updatedAt = new Date().toISOString();
 
   if (blobReady()) {

@@ -3,7 +3,7 @@ import { readFile } from "fs/promises";
 import path from "path";
 import { type Platform, PLATFORMS, APP } from "@/lib/config";
 import { resolveDownloads } from "@/lib/github";
-import { incrementDownload, incrementGithubDownload } from "@/lib/stats";
+import { incrementDownload } from "@/lib/stats";
 
 const VALID: Platform[] = ["linux", "windows", "macos", "terminal"];
 
@@ -151,16 +151,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "No download URL" }, { status: 404 });
   }
 
-  // GitHub release asset — track on our side (GitHub API download_count lags heavily).
-  const isGithubReleaseAsset =
-    url.includes("github.com") && url.includes("/releases/download/");
-
   try {
-    if (isGithubReleaseAsset) {
-      await incrementGithubDownload();
-    } else {
-      await incrementDownload(platform);
-    }
+    await incrementDownload(platform);
   } catch (err) {
     console.error("download stats increment failed:", err);
   }

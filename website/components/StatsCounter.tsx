@@ -17,7 +17,6 @@ export default function StatsCounter() {
 
   const total = data?.total;
   const site = data?.siteTracked ?? 0;
-  const github = data?.githubRelease ?? 0;
 
   return (
     <div className="stats-bar">
@@ -31,13 +30,6 @@ export default function StatsCounter() {
       <div className="stat">
         <div className="stat-value">{format(site)}</div>
         <div className="stat-label">From this site</div>
-      </div>
-      <div className="stat-divider" />
-      <div className="stat">
-        <div className="stat-value">{format(github)}</div>
-        <div className="stat-label" title="Includes GitHub release downloads tracked by this site. GitHub’s own counter can lag by hours.">
-          Via GitHub
-        </div>
       </div>
       <div className="stat-divider" />
       <div className="stat stat-live">

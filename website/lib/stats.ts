@@ -1,11 +1,9 @@
 import { kv } from "@vercel/kv";
 import { type Platform } from "./config";
-import { githubAllReleasesTotal, fetchAllReleases } from "./github";
 import {
   incrementLocalStats,
   readLocalStats,
   resolveStorageBackend,
-  incrementGithubTracked,
 } from "./stats-store";
 
 const TOTAL_KEY = "stats:downloads:total";
@@ -18,7 +16,6 @@ function kvReady(): boolean {
 export interface DownloadStats {
   total: number;
   siteTracked: number;
-  githubRelease: number;
   byPlatform: Record<Platform, number>;
   updatedAt: string;
   live: boolean;
@@ -38,23 +35,18 @@ async function readPlatformCountsFromKv(): Promise<Record<Platform, number>> {
 }
 
 export async function getDownloadStats(): Promise<DownloadStats> {
-  const releases = await fetchAllReleases({ noStore: true });
-  const githubApi = githubAllReleasesTotal(releases);
   const storage = resolveStorageBackend();
 
   let siteTotal = 0;
-  let githubTracked = 0;
   let byPlatform: Record<Platform, number>;
   let updatedAt = new Date().toISOString();
 
   if (kvReady()) {
     siteTotal = (await kv.get<number>(TOTAL_KEY)) ?? 0;
-    githubTracked = (await kv.get<number>("stats:downloads:github")) ?? 0;
     byPlatform = await readPlatformCountsFromKv();
   } else if (storage === "blob" || storage === "local") {
     const local = await readLocalStats();
     siteTotal = local.total;
-    githubTracked = local.githubTracked;
     byPlatform = local.byPlatform;
     updatedAt = local.updatedAt;
   } else {
@@ -62,14 +54,10 @@ export async function getDownloadStats(): Promise<DownloadStats> {
   }
 
   const siteTracked = siteTotal;
-  // GitHub API download_count often lags hours; use our redirect counter when higher.
-  const githubRelease = Math.max(githubApi, githubTracked);
-  const total = siteTracked + githubRelease;
 
   return {
-    total,
+    total: siteTracked,
     siteTracked,
-    githubRelease,
     byPlatform,
     updatedAt,
     live: storage !== "none",
@@ -86,13 +74,4 @@ export async function incrementDownload(platform: Platform): Promise<number> {
 
   const local = await incrementLocalStats(platform);
   return local.total;
-}
-
-export async function incrementGithubDownload(): Promise<number> {
-  if (kvReady()) {
-    return (await kv.incr("stats:downloads:github")) ?? 0;
-  }
-
-  const local = await incrementGithubTracked();
-  return local.githubTracked;
 }
