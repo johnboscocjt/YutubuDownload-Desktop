@@ -35,7 +35,9 @@ export default function StatsCounter() {
       <div className="stat-divider" />
       <div className="stat">
         <div className="stat-value">{format(github)}</div>
-        <div className="stat-label">GitHub releases</div>
+        <div className="stat-label" title="Includes GitHub release downloads tracked by this site. GitHub’s own counter can lag by hours.">
+          Via GitHub
+        </div>
       </div>
       <div className="stat-divider" />
       <div className="stat stat-live">

@@ -74,12 +74,21 @@ export async function fetchLatestRelease(): Promise<GitHubRelease | null> {
   return res.json();
 }
 
-export async function fetchAllReleases(): Promise<GitHubRelease[]> {
+export async function fetchAllReleases(
+  options?: { noStore?: boolean }
+): Promise<GitHubRelease[]> {
   const res = await fetch(
     `https://api.github.com/repos/${APP.repo}/releases?per_page=100`,
     {
-      headers: { Accept: "application/vnd.github+json" },
-      next: { revalidate: 120 },
+      headers: {
+        Accept: "application/vnd.github+json",
+        ...(process.env.GITHUB_TOKEN
+          ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` }
+          : {}),
+      },
+      ...(options?.noStore
+        ? { cache: "no-store" as const }
+        : { next: { revalidate: 120 } }),
     }
   );
   if (!res.ok) return [];
