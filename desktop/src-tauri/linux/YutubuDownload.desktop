@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=YutubuDownload
+Comment=Desktop app — GUI for videos, playlists, and MP3
+Exec=/usr/bin/yutubu-download-launcher %F
+Icon=/usr/share/icons/hicolor/128x128/apps/yutubu-download.png
+Categories=AudioVideo;Network;Utility;
+Terminal=false
+StartupNotify=true
+StartupWMClass=yutubu-download

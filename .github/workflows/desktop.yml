@@ -1,0 +1,168 @@
+name: Desktop App CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "desktop/**"
+      - "crates/**"
+      - "website/lib/**"
+      - "website/app/api/download/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/desktop.yml"
+  pull_request:
+    paths:
+      - "desktop/**"
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+  workflow_dispatch:
+
+jobs:
+  rust-core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+      - run: cargo test -p ytd-core
+      - run: cargo build -p ytd-core-cli --release
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci
+        working-directory: desktop
+      - run: npm run build
+        working-directory: desktop
+
+  tauri-linux:
+    needs: [rust-core, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+      - run: npm ci
+        working-directory: desktop
+      - run: npm run tauri build
+        working-directory: desktop
+      - name: Stage Linux installer
+        run: |
+          mkdir -p website/public/downloads
+          cp target/release/bundle/deb/*.deb website/public/downloads/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-deb
+          path: website/public/downloads/*.deb
+          if-no-files-found: error
+
+  tauri-macos:
+    needs: [rust-core, frontend]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+      - name: Add Rust targets for universal macOS build
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci
+        working-directory: desktop
+      - run: npm run tauri build -- --target universal-apple-darwin
+        working-directory: desktop
+      - name: Stage macOS installer
+        run: |
+          mkdir -p website/public/downloads
+          DMG=$(find target -path '*/bundle/dmg/*.dmg' -print -quit)
+          test -n "$DMG"
+          cp "$DMG" website/public/downloads/YutubuDownload_2.0.1_universal.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: website/public/downloads/YutubuDownload_2.0.1_universal.dmg
+          if-no-files-found: error
+
+  tauri-windows:
+    needs: [rust-core, frontend]
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci
+        working-directory: desktop
+      - run: npm run tauri build
+        working-directory: desktop
+      - name: Stage Windows installer
+        run: |
+          mkdir -p website/public/downloads
+          EXE=$(ls target/release/bundle/nsis/*-setup.exe | head -1)
+          cp "$EXE" website/public/downloads/YutubuDownload_2.0.1_x64-setup.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe
+          path: website/public/downloads/YutubuDownload_2.0.1_x64-setup.exe
+          if-no-files-found: error
+
+  publish-installers:
+    needs: [tauri-linux, tauri-windows, tauri-macos]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Copy installers into website
+        run: |
+          mkdir -p website/public/downloads
+          cp artifacts/linux-deb/*.deb website/public/downloads/
+          cp artifacts/windows-exe/YutubuDownload_2.0.1_x64-setup.exe website/public/downloads/
+          cp artifacts/macos-dmg/YutubuDownload_2.0.1_universal.dmg website/public/downloads/
+          ls -lh website/public/downloads/
+      - name: Commit website installers
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add website/public/downloads/
+          if git diff --staged --quiet; then
+            echo "No installer changes to commit."
+            exit 0
+          fi
+          git commit -m "Update website desktop installers (.deb, Windows .exe, macOS .dmg)."
+          git push

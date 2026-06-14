@@ -1,0 +1,94 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "YutubuDownload",
+  "version": "2.0.1",
+  "identifier": "com.johnboscocjt.yutubudownload",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "YutubuDownload",
+        "width": 960,
+        "height": 720,
+        "minWidth": 800,
+        "minHeight": 600,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' ipc: http://ipc.localhost tauri:; media-src 'self' asset: http://asset.localhost ytd-media: http://ytd-media.localhost blob: data:; img-src 'self' asset: http://asset.localhost https: data:",
+      "assetProtocol": {
+        "enable": true,
+        "scope": {
+          "allow": [
+            "$HOME/**",
+            "$DOWNLOAD/**",
+            "$VIDEO/**",
+            "$DESKTOP/**",
+            "$DOCUMENT/**",
+            "$TEMP/**",
+            "/tmp/**"
+          ],
+          "requireLiteralLeadingDot": false
+        }
+      },
+      "capabilities": ["default"]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["deb", "nsis", "dmg"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/64x64.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "displayLanguageSelector": false
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    },
+    "linux": {
+      "deb": {
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0",
+          "libjavascriptcoregtk-4.1-0",
+          "libsoup-3.0-0",
+          "gstreamer1.0-plugins-base",
+          "gstreamer1.0-plugins-good",
+          "gstreamer1.0-gl",
+          "gstreamer1.0-libav",
+          "dbus"
+        ],
+        "desktopTemplate": "linux/YutubuDownload.desktop",
+        "preInstallScript": "linux/deb-preinstall.sh",
+        "postInstallScript": "linux/deb-postinstall.sh",
+        "postRemoveScript": "linux/deb-postremove.sh",
+        "files": {
+          "/usr/bin/yutubu-download-launcher": "linux/yutubu-download-launcher.sh",
+          "/usr/share/icons/hicolor/48x48/apps/yutubu-download.png": "icons/Square44x44Logo.png",
+          "/usr/share/icons/hicolor/64x64/apps/yutubu-download.png": "icons/64x64.png",
+          "/usr/share/icons/hicolor/256x256/apps/yutubu-download.png": "icons/icon.png"
+        }
+      }
+    }
+  },
+  "plugins": {
+    "shell": {
+      "open": true
+    }
+  }
+}

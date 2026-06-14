@@ -1,0 +1,38 @@
+{
+  "name": "yutubu-download-desktop",
+  "private": true,
+  "version": "2.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "npm run copy-screenshots && vite",
+    "build": "npm run copy-screenshots && tsc && vite build",
+    "copy-screenshots": "node scripts/copy-screenshots.mjs",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "tauri:linux": "GDK_BACKEND=x11 dbus-run-session -- tauri",
+    "tauri:dev": "npm run tauri:linux -- dev",
+    "tauri:dev:dbus": "npm run tauri:linux -- dev",
+    "tauri:build": "npm run build && tauri build",
+    "tauri:build:win": "scripts\\build-windows-release.bat"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.4.0",
+    "@tauri-apps/plugin-dialog": "^2.2.0",
+    "@tauri-apps/plugin-opener": "^2.2.5",
+    "mermaid": "^11.15.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-markdown": "^10.1.0",
+    "rehype-raw": "^7.0.0",
+    "rehype-sanitize": "^6.0.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.4.0",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "@vitejs/plugin-react": "^4.4.1",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5"
+  }
+}
